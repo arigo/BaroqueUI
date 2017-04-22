@@ -88,6 +88,7 @@ namespace BaroqueUI
         public SteamVR_TrackedObject trackedObject;
         public ControllerSnapshot snapshot;
 
+        static SteamVR_ControllerManager controllerManager;
         VRControllerState_t controllerState;
         SteamVR_Events.Action newPosesAppliedAction;
         BaroqueUI_Controller otherController;
@@ -154,7 +155,7 @@ namespace BaroqueUI
                 foreach (var action in AllActions())
                 {
                     if (action.enabled && snapshot.GetButton(action.controllerButton))
-                        action.HandleButtonMove(LocalizedSnapshot(action.transform));
+                        action.HandleButtonMove(snapshot);
                 }
             }
         }
@@ -182,21 +183,13 @@ namespace BaroqueUI
             return result;
         }
 
-        ControllerSnapshot LocalizedSnapshot(Transform tr)
-        {
-            ControllerSnapshot result = snapshot;
-            result.position = tr.position;
-            result.rotation = tr.rotation;
-            return result;
-        }
-
         void ButtonDown(EControllerButton button)
         {
             ControllerSnapshot.SetButton(ref snapshot, button, true);
 
             foreach (var aa in ActiveActionsFor(button))
             {
-                if (aa.HandleButtonDown(LocalizedSnapshot(aa.transform)))
+                if (aa.HandleButtonDown(snapshot))
                     break;
             }
         }
@@ -227,15 +220,23 @@ namespace BaroqueUI
                                                 "'Controller (right) in SteamVR's '[CameraRig]'.");
         }
 
+        static public SteamVR_ControllerManager FindSteamVRControllerManager()
+        {
+            if (controllerManager != null)
+                return controllerManager;
+
+            controllerManager = FindObjectOfType<SteamVR_ControllerManager>();
+            if (controllerManager == null)
+                throw new MissingComponentException("'SteamVR_ControllerManager' not found anywhere");
+            return controllerManager;
+        }
+
         public BaroqueUI_Controller GetOtherController()
         {
             if (otherController != null)
                 return otherController;
 
-            SteamVR_ControllerManager mgr = GetComponentInParent<SteamVR_ControllerManager>();
-            if (mgr == null)
-                throw new MissingComponentException("'SteamVR_ControllerManager' not found in any parent of " + name);
-
+            SteamVR_ControllerManager mgr = FindSteamVRControllerManager();
             GameObject gobj;
             if (mgr.left == gameObject)
                 gobj = mgr.right;

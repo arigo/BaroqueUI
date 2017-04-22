@@ -69,7 +69,7 @@ namespace BaroqueUI
             public override void HandleButtonMove(ControllerSnapshot snapshot)
             {
                 var arc = teleport.arc;
-                arc.SetArcData(snapshot.position, snapshot.forward * teleport.beamVelocity, true, false);
+                arc.SetArcData(teleport.transform.position, teleport.transform.forward * teleport.beamVelocity, true, false);
 
                 destination_valid = false;
                 bool show_invalid = false;

@@ -12,56 +12,69 @@ namespace BaroqueUI
 
     public class SceneDelegate : MonoBehaviour
     {
-        public SceneAction sceneAction;
+        public SceneAction[] sceneActions;
         public ButtonDownHandler buttonDown;
         public ButtonMoveHandler buttonMove;
         public ButtonUpHandler buttonUp;
-
-        static public SceneDelegate Register(string tag, Component component)
-        {
-            return Register(SceneAction.ActionByTag(tag), component);
-        }
-
-        static public SceneDelegate Register(SceneAction action, Component component)
-        {
-            foreach (SceneDelegate sd in component.GetComponents<SceneDelegate>())
-                if (sd.sceneAction == action)
-                    return sd;
-
-            SceneDelegate newsd = component.gameObject.AddComponent<SceneDelegate>();
-            newsd.sceneAction = action;
-            return newsd;
-        }
-
-        static public void Unregister(SceneDelegate sd)
-        {
-            sd.sceneAction = null;
-            Destroy(sd);
-        }
     }
 
 
     public class SceneAction : AbstractControllerAction
     {
-        public int layerMask;
-        public QueryTriggerInteraction trigger_interaction;
+        [Header("Scene action parameters")]
+        public string actionName;
+        public LayerMask layerMask;
+        public QueryTriggerInteraction triggerInteraction;
 
         void Reset()
         {
+            actionName = "Default";
             layerMask = ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
-            trigger_interaction = QueryTriggerInteraction.Collide;
+            triggerInteraction = QueryTriggerInteraction.Collide;
         }
 
-        static public SceneAction ActionByTag(string tag)
+        static public SceneAction[] ActionsByName(string name)
         {
-            GameObject gobj = GameObject.FindGameObjectWithTag(tag);
-            SceneAction sa = gobj == null ? null : gobj.GetComponent<SceneAction>();
-            if (sa == null)
-                throw new ArgumentException("The tag '" + tag + "' does not exist or refers to a game object without the 'SceneAction' component");
-            return sa;
+            var result = new List<SceneAction>();
+            var mgr = BaroqueUI_Controller.FindSteamVRControllerManager();
+            foreach (var sa in mgr.GetComponentsInChildren<SceneAction>(/*includeInactive=*/true))
+                if (sa.actionName == name)
+                    result.Add(sa);
+            if (result.Count == 0)
+                throw new ArgumentException("Found no 'SceneAction' with the name '" + name + "'");
+            return result.ToArray();
         }
 
+        static public SceneDelegate Register(string action_name, Component component)
+        {
+            return Register(SceneAction.ActionsByName(action_name), component);
+        }
 
+        static public SceneDelegate Register(SceneAction action, Component component)
+        {
+            return Register(new SceneAction[] { action }, component);
+        }
+
+        static public SceneDelegate Register(SceneAction[] actions, Component component)
+        {
+            foreach (SceneDelegate sd in component.GetComponents<SceneDelegate>())
+                if (sd.sceneActions == actions)
+                    return sd;
+
+            SceneDelegate newsd = component.gameObject.AddComponent<SceneDelegate>();
+            newsd.sceneActions = actions;
+            return newsd;
+        }
+
+        static public void Unregister(SceneDelegate sd)
+        {
+            sd.sceneActions = new SceneAction[0];
+            Destroy(sd);
+        }
+
+        /***************************************************************************************************/
+
+        
         struct FoundDelegate
         {
             public SceneDelegate scene_delegate;
@@ -102,7 +115,7 @@ namespace BaroqueUI
                 Collider[] lst;
                 if (ctrl_coll == null)
                 {
-                    lst = Physics.OverlapSphere(transform.position, 0.001f, layerMask, trigger_interaction);
+                    lst = Physics.OverlapSphere(transform.position, 0.001f, layerMask, triggerInteraction);
                 }
                 else if (ctrl_coll is SphereCollider)
                 {
@@ -111,7 +124,7 @@ namespace BaroqueUI
                     Vector3 v = sc.transform.lossyScale;
                     var scale = Mathf.Max(v.x, v.y, v.z);
                     lst = Physics.OverlapSphere(sc.transform.TransformPoint(sc.center),
-                                                scale * sc.radius, layerMask, trigger_interaction);
+                                                scale * sc.radius, layerMask, triggerInteraction);
                 }
                 else if (ctrl_coll is CapsuleCollider)
                 {
@@ -158,7 +171,7 @@ namespace BaroqueUI
                     Vector3 center = cc.transform.TransformPoint(cc.center);
 
                     lst = Physics.OverlapCapsule(center + delta_v, center - delta_v, radius,
-                                                 layerMask, trigger_interaction);
+                                                 layerMask, triggerInteraction);
                 }
                 else if (ctrl_coll is BoxCollider)
                 {
@@ -167,7 +180,7 @@ namespace BaroqueUI
                     lst = Physics.OverlapBox(bc.transform.TransformPoint(bc.center),
                                              bc.size * 0.5f,
                                              bc.transform.rotation,
-                                             layerMask, trigger_interaction);
+                                             layerMask, triggerInteraction);
                 }
                 else
                 {
@@ -176,7 +189,7 @@ namespace BaroqueUI
                     lst = Physics.OverlapBox(ctrl_coll.transform.TransformPoint(bounds.center),
                                              bounds.extents * 0.5f,
                                              Quaternion.identity,
-                                             layerMask, trigger_interaction);
+                                             layerMask, triggerInteraction);
                 }
 
                 foreach (var coll in lst)
@@ -185,8 +198,10 @@ namespace BaroqueUI
                     float size = Mathf.Max(v.x, v.y, v.z);
 
                     foreach (var sd in coll.transform.GetComponentsInParent<SceneDelegate>())
-                        if (sd.sceneAction == this)
+                    {
+                        if (Array.IndexOf(sd.sceneActions, this) >= 0)
                             found.Add(new FoundDelegate(sd, size));
+                    }
                 }
             }
 
