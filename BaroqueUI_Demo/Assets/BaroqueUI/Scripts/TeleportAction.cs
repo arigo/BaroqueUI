@@ -68,43 +68,53 @@ namespace BaroqueUI
 
             public override void HandleButtonMove(ControllerSnapshot snapshot)
             {
-                var arc = teleport.arc;
-                arc.SetArcData(teleport.transform.position, teleport.transform.forward * teleport.beamVelocity, true, false);
-
-                destination_valid = false;
-                bool show_invalid = false;
-                RaycastHit hitInfo;
-                if (arc.DrawArc(out hitInfo))
+                bool saved = Physics.queriesHitTriggers;
+                try
                 {
-                    /* The teleport destination is accepted if we fit a capsule here.  More precisely:
-                        * the capsule starts at ABOVE_GROUND above the hit point of the beam; on top
-                        * of that we check the capsule.  The height of that capsule above around is thus
-                        * from ABOVE_GROUND to ABOVE_GROUND + RADIUS + DISTANCE + RADIUS.  The parameters
-                        * are chosen so that planes of above ~30° cannot be teleported to, because the
-                        * bottom of the capsule always intersects that plane. 
-                        */
-                    const float ABOVE_GROUND = 0.1f, RADIUS = 0.32f, DISTANCE = 1.1f;
+                    Physics.queriesHitTriggers = false;
 
-                    if (Physics.CheckCapsule(hitInfo.point + (ABOVE_GROUND + RADIUS) * Vector3.up,
-                                                hitInfo.point + (ABOVE_GROUND + RADIUS + DISTANCE) * Vector3.up,
-                                                RADIUS, teleport.traceLayerMask, QueryTriggerInteraction.Ignore))
+                    var arc = teleport.arc;
+                    arc.SetArcData(teleport.transform.position, teleport.transform.forward * teleport.beamVelocity, true, false);
+
+                    destination_valid = false;
+                    bool show_invalid = false;
+                    RaycastHit hitInfo;
+                    if (arc.DrawArc(out hitInfo))
                     {
-                        /* invalid position */
-                        teleport.invalidReticle.position = hitInfo.point;
-                        teleport.invalidReticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
-                        show_invalid = true;
+                        /* The teleport destination is accepted if we fit a capsule here.  More precisely:
+                            * the capsule starts at ABOVE_GROUND above the hit point of the beam; on top
+                            * of that we check the capsule.  The height of that capsule above around is thus
+                            * from ABOVE_GROUND to ABOVE_GROUND + RADIUS + DISTANCE + RADIUS.  The parameters
+                            * are chosen so that planes of above ~30° cannot be teleported to, because the
+                            * bottom of the capsule always intersects that plane. 
+                            */
+                        const float ABOVE_GROUND = 0.1f, RADIUS = 0.32f, DISTANCE = 1.1f;
+
+                        if (Physics.CheckCapsule(hitInfo.point + (ABOVE_GROUND + RADIUS) * Vector3.up,
+                                                    hitInfo.point + (ABOVE_GROUND + RADIUS + DISTANCE) * Vector3.up,
+                                                    RADIUS, teleport.traceLayerMask, QueryTriggerInteraction.Ignore))
+                        {
+                            /* invalid position */
+                            teleport.invalidReticle.position = hitInfo.point;
+                            teleport.invalidReticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
+                            show_invalid = true;
+                        }
+                        else
+                        {
+                            /* valid position */
+                            teleport.invalidReticle.gameObject.SetActive(false);
+                            teleport.destinationReticle.position = destination = hitInfo.point;
+                            destination_valid = true;
+                        }
                     }
-                    else
-                    {
-                        /* valid position */
-                        teleport.invalidReticle.gameObject.SetActive(false);
-                        teleport.destinationReticle.position = destination = hitInfo.point;
-                        destination_valid = true;
-                    }
+                    teleport.invalidReticle.gameObject.SetActive(show_invalid);
+                    teleport.destinationReticle.gameObject.SetActive(destination_valid);
+                    arc.SetColor(destination_valid ? teleport.validArcColor : teleport.invalidArcColor);
                 }
-                teleport.invalidReticle.gameObject.SetActive(show_invalid);
-                teleport.destinationReticle.gameObject.SetActive(destination_valid);
-                arc.SetColor(destination_valid ? teleport.validArcColor : teleport.invalidArcColor);
+                finally
+                {
+                    Physics.queriesHitTriggers = saved;
+                }
             }
 
             public override bool HandleButtonUp()
