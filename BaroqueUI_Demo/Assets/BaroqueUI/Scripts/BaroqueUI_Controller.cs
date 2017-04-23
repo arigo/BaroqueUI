@@ -10,42 +10,21 @@ namespace BaroqueUI
 
     public enum EControllerButton
     {
-        TriggerClick, TouchpadClick, TouchpadTouch, GripButton, MenuButton, NoRestriction
+        TriggerClick, TouchpadTouch, TouchpadClick, GripButton, MenuButton
     }
 
 
     public struct ControllerSnapshot
     {
         public BaroqueUI_Controller controller;
-        public bool triggerClick, touchpadClick, touchpadTouch, gripButton, menuButton;
+        internal uint buttons;
         public Vector3 position;
         public Quaternion rotation;
         public Vector2 touchpadPosition;
 
         public bool GetButton(EControllerButton btn)
         {
-            switch (btn)
-            {
-                case EControllerButton.TriggerClick: return triggerClick;
-                case EControllerButton.TouchpadClick: return touchpadClick;
-                case EControllerButton.TouchpadTouch: return touchpadTouch;
-                case EControllerButton.GripButton: return gripButton;
-                case EControllerButton.MenuButton: return menuButton;
-                default: throw new ArgumentOutOfRangeException("EControllerButton: unknown value " + btn);
-            }
-        }
-
-        static public void SetButton(ref ControllerSnapshot snapshot, EControllerButton btn, bool value)
-        {
-            switch (btn)
-            {
-                case EControllerButton.TriggerClick: snapshot.triggerClick = value; break;
-                case EControllerButton.TouchpadClick: snapshot.touchpadClick = value; break;
-                case EControllerButton.TouchpadTouch: snapshot.touchpadTouch = value; break;
-                case EControllerButton.GripButton: snapshot.gripButton = value; break;
-                case EControllerButton.MenuButton: snapshot.menuButton = value; break;
-                default: throw new ArgumentOutOfRangeException();
-            }
+            return (buttons & (1U << (int)btn)) != 0;
         }
 
         public Vector3 back { get { return rotation * Vector3.back; } }
@@ -67,6 +46,29 @@ namespace BaroqueUI
     }
 
 
+    public class Hover : IComparable<Hover>
+    {
+        public float reversed_priority;    /* smaller values have higher priority */
+        public int CompareTo(Hover other) { return reversed_priority.CompareTo(other.reversed_priority); }
+
+        public static Hover BestHover(Hover hov1, Hover hov2)
+        {
+            if (hov1 == null)
+                return hov2;
+            else if (hov2 == null || hov2.CompareTo(hov1) > 0)
+                return hov1;
+            else
+                return hov2;
+        }
+
+        public virtual void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot) { }
+    }
+
+
     public abstract class AbstractControllerAction : MonoBehaviour
     {
         public EControllerButton controllerButton;
@@ -77,9 +79,12 @@ namespace BaroqueUI
             controller = BaroqueUI_Controller.BuildFromObjectInside(gameObject);
         }
 
-        public virtual bool HandleButtonDown(ControllerSnapshot snapshot) { return false; }
-        public virtual void HandleButtonMove(ControllerSnapshot snapshot) { }
-        public virtual bool HandleButtonUp() { return false; }
+        protected bool IsPressingButton(ControllerSnapshot snapshot)
+        {
+            return snapshot.GetButton(controllerButton);
+        }
+
+        public abstract Hover FindHover(ControllerSnapshot snapshot);
     }
 
 
@@ -93,9 +98,19 @@ namespace BaroqueUI
         SteamVR_Events.Action newPosesAppliedAction;
         BaroqueUI_Controller otherController;
 
+        Hover[] hovers_current;
+        uint hovers_grabbed;
+        int BUTTON_COUNT;
+
         void Awake()
         {
             snapshot.controller = this;
+
+            foreach (EControllerButton button in Enum.GetValues(typeof(EControllerButton)))
+                BUTTON_COUNT = Math.Max(BUTTON_COUNT, 1 + (int)button);
+            hovers_current = new Hover[BUTTON_COUNT];
+            hovers_grabbed = 0;
+
             trackedObject = GetComponent<SteamVR_TrackedObject>();
             newPosesAppliedAction = SteamVR_Events.NewPosesAppliedAction(OnNewPosesApplied);
             newPosesAppliedAction.enabled = false;
@@ -109,9 +124,10 @@ namespace BaroqueUI
         void OnDisable()
         {
             newPosesAppliedAction.enabled = false;
-            foreach (EControllerButton button in Enum.GetValues(typeof(EControllerButton)))
-                if (button != EControllerButton.NoRestriction && snapshot.GetButton(button))
-                    ButtonUp(button);
+
+            uint button_org = snapshot.buttons;
+            snapshot.buttons = 0;
+            CallButtonsUps(button_org);
         }
 
         void OnNewPosesApplied()
@@ -126,81 +142,107 @@ namespace BaroqueUI
                 ulong grip = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_Grip));
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
 
-                if (menu == 0 && snapshot.menuButton)
-                    ButtonUp(EControllerButton.TouchpadClick);
-                if (grip == 0 && snapshot.gripButton)
-                    ButtonUp(EControllerButton.GripButton);
-                if (pad == 0 && snapshot.touchpadClick)
-                    ButtonUp(EControllerButton.TouchpadClick);
-                if (touch == 0 && snapshot.touchpadTouch)
-                    ButtonUp(EControllerButton.TouchpadTouch);
-                if (trigger == 0 && snapshot.triggerClick)
-                    ButtonUp(EControllerButton.TriggerClick);
-
+                uint button_org, b;
+                b = button_org = snapshot.buttons;
+                if (menu == 0) b &= ~(1U << (int)EControllerButton.MenuButton);
+                if (grip == 0) b &= ~(1U << (int)EControllerButton.GripButton);
+                if (pad == 0) b &= ~(1U << (int)EControllerButton.TouchpadClick);
+                if (touch == 0) b &= ~(1U << (int)EControllerButton.TouchpadTouch);
+                if (trigger == 0) b &= ~(1U << (int)EControllerButton.TriggerClick);
+                snapshot.buttons = b;
+                CallButtonsUps(button_org);
+                
                 snapshot.position = transform.position;
                 snapshot.rotation = transform.rotation;
                 snapshot.touchpadPosition = new Vector2(controllerState.rAxis0.x, controllerState.rAxis0.y);
 
-                if (trigger != 0 && !snapshot.triggerClick)
-                    ButtonDown(EControllerButton.TriggerClick);
-                if (touch != 0 && !snapshot.touchpadTouch)
-                    ButtonDown(EControllerButton.TouchpadTouch);
-                if (pad != 0 && !snapshot.touchpadClick)
-                    ButtonDown(EControllerButton.TouchpadClick);
-                if (grip != 0 && !snapshot.gripButton)
-                    ButtonDown(EControllerButton.GripButton);
-                if (menu != 0 && !snapshot.menuButton)
-                    ButtonDown(EControllerButton.TouchpadClick);
-
-                foreach (var action in ActiveActions())
+                b = button_org = snapshot.buttons;
+                if (trigger != 0) b |= (1U << (int)EControllerButton.TriggerClick);
+                if (touch != 0) b |= (1U << (int)EControllerButton.TouchpadTouch);
+                if (pad != 0) b |= (1U << (int)EControllerButton.TouchpadClick);
+                if (grip != 0) b |= (1U << (int)EControllerButton.GripButton);
+                if (menu != 0) b |= (1U << (int)EControllerButton.MenuButton);
+                snapshot.buttons = b;
+                
+                /* XXX try to cache the result of GetComponentsInChildren */
+                Hover[] hovers_new = new Hover[BUTTON_COUNT];
+                foreach (var action in GetComponentsInChildren<AbstractControllerAction>())
                 {
-                    if (snapshot.GetButton(action.controllerButton))
-                        action.HandleButtonMove(snapshot);
+                    int index = (int)action.controllerButton;
+                    if ((hovers_grabbed & (1U << index)) == 0)
+                    {
+                        /* call FindHover if not grabbed.  This is also true if we just pressed the button now,
+                         * because we only set hovers_grabbed below; but in this case 'snapshot' already says the
+                         * button is pressed.  That's how FindHover() knows if it is being called for just hovering
+                         * or really for pressing, with IsPressingButton().
+                         */
+                        Hover hover = action.FindHover(snapshot);
+                        hovers_new[index] = Hover.BestHover(hovers_new[index], hover);
+                    }
+                }
+                for (int index = BUTTON_COUNT - 1; index >= 0; index--)
+                {
+                    if ((hovers_grabbed & (1U << index)) == 0)
+                    {
+                        /* button 'index' is not grabbed so far.  Call OnButtonLeave if we leave the old Hover. */
+                        if (hovers_new[index] != hovers_current[index] && hovers_current[index] != null)
+                            hovers_current[index].OnButtonLeave((EControllerButton)index, snapshot);
+                    }
+                }
+                for (int index = 0; index < BUTTON_COUNT; index++)
+                {
+                    if ((hovers_grabbed & (1U << index)) == 0)
+                    {
+                        /* button 'index' is not grabbed so far.  Update hovers_current and call OnButtonEnter
+                         * if that changes. */
+                        if (hovers_new[index] != hovers_current[index])
+                        {
+                            hovers_current[index] = hovers_new[index];
+                            if (hovers_current[index] != null)
+                                hovers_current[index].OnButtonEnter((EControllerButton)index, snapshot);
+                        }
+                    }
+                    else
+                    {
+                        /* button 'index' was already grabbed.  Call OnButtonDrag. */
+                        if (hovers_current[index] != null)
+                            hovers_current[index].OnButtonDrag((EControllerButton)index, snapshot);
+                    }
+                }
+                /* Now call any OnButtonDown. */
+                CallButtonsDowns(button_org);
+            }
+        }
+
+        void CallButtonsDowns(uint button_org)
+        {
+            uint change = ~button_org & snapshot.buttons;
+            if (change == 0)
+                return;
+            for (int index = 0; index < BUTTON_COUNT; index++)
+            {
+                if ((change & (1U << index)) != 0)
+                {
+                    if (hovers_current[index] != null)
+                        hovers_current[index].OnButtonDown((EControllerButton)index, snapshot);
+                    hovers_grabbed |= (1U << index);
                 }
             }
         }
 
-        List<AbstractControllerAction> ActiveActions(EControllerButton for_button = EControllerButton.NoRestriction)
+        void CallButtonsUps(uint button_org)
         {
-            var result = new List<AbstractControllerAction>();
-            ListActiveActions(transform, for_button, result);
-            return result;
-        }
-
-        static void ListActiveActions(Transform tr, EControllerButton for_button, List<AbstractControllerAction> result)
-        {
-            var actions = tr.GetComponents<AbstractControllerAction>();
-            for (int i = actions.Length - 1; i >= 0; i--)
+            uint change = button_org & ~snapshot.buttons;
+            if (change == 0)
+                return;
+            for (int index = BUTTON_COUNT - 1; index >= 0; index--)
             {
-                AbstractControllerAction action = actions[i];
-                if (action.enabled && (for_button == EControllerButton.NoRestriction ||
-                                       action.controllerButton == EControllerButton.NoRestriction ||
-                                       action.controllerButton == for_button))
-                    result.Add(actions[i]);
-            }
-            for (int i = tr.childCount - 1; i >= 0; i--)
-                ListActiveActions(tr.GetChild(i), for_button, result);
-        }
-
-        void ButtonDown(EControllerButton button)
-        {
-            ControllerSnapshot.SetButton(ref snapshot, button, true);
-
-            foreach (var aa in ActiveActions(button))
-            {
-                if (aa.HandleButtonDown(snapshot))
-                    break;
-            }
-        }
-
-        void ButtonUp(EControllerButton button)
-        {
-            ControllerSnapshot.SetButton(ref snapshot, button, false);
-
-            foreach (var aa in ActiveActions(button))
-            {
-                if (aa.HandleButtonUp())
-                    break;
+                if ((change & (1U << index)) != 0)
+                {
+                    if (hovers_current[index] != null)
+                        hovers_current[index].OnButtonUp((EControllerButton)index, snapshot);
+                    hovers_grabbed &= ~(1U << index);
+                }
             }
         }
 

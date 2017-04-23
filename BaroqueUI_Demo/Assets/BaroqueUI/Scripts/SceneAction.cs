@@ -6,16 +6,14 @@ using UnityEngine;
 
 namespace BaroqueUI
 {
-    public delegate bool ButtonDownHandler(ControllerSnapshot snapshot);
-    public delegate void ButtonMoveHandler(ControllerSnapshot snapshot);
-    public delegate bool ButtonUpHandler();
+    public delegate Hover FindHoverMethod(EControllerButton button, ControllerSnapshot snapshot);
+
 
     public class SceneDelegate : MonoBehaviour
     {
-        public SceneAction[] sceneActions;
-        public ButtonDownHandler buttonDown;
-        public ButtonMoveHandler buttonMove;
-        public ButtonUpHandler buttonUp;
+        public SceneAction sceneAction;
+        public FindHoverMethod findHoverMethod;
+        public float sizeEstimate;
     }
 
 
@@ -23,66 +21,68 @@ namespace BaroqueUI
     {
         [Header("Scene action parameters")]
         public string actionName;
+        public bool alsoForHovering;
         public LayerMask layerMask;
-        public QueryTriggerInteraction triggerInteraction;
+        public QueryTriggerInteraction collideWithTriggersToo;
 
         void Reset()
         {
             actionName = "Default";
+            alsoForHovering = true;
             layerMask = ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
-            triggerInteraction = QueryTriggerInteraction.Collide;
+            collideWithTriggersToo = QueryTriggerInteraction.Collide;
         }
 
-        static public SceneAction[] ActionsByName(string name)
+        static public List<SceneAction> ActionsByName(string name)
         {
             var result = new List<SceneAction>();
             var mgr = BaroqueUI_Controller.FindSteamVRControllerManager();
             foreach (var sa in mgr.GetComponentsInChildren<SceneAction>(/*includeInactive=*/true))
                 if (sa.actionName == name)
                     result.Add(sa);
-            if (result.Count == 0)
-                throw new ArgumentException("Found no 'SceneAction' with the name '" + name + "'");
-            return result.ToArray();
+            return result;
         }
 
-        static public SceneDelegate Register(string action_name, Component component)
+        static public void Register(string action_name, GameObject game_object, FindHoverMethod method)
         {
-            return Register(SceneAction.ActionsByName(action_name), component);
+            var actions = SceneAction.ActionsByName(action_name);
+            if (actions.Count == 0)
+                throw new ArgumentException("Found no 'SceneAction' with the name '" + action_name + "'");
+
+            foreach (var action in actions)
+                action.Register(game_object, method);
         }
 
-        static public SceneDelegate Register(SceneAction action, Component component)
+        public void Register(GameObject game_object, FindHoverMethod method)
         {
-            return Register(new SceneAction[] { action }, component);
-        }
+            SceneDelegate sd = null;
 
-        static public SceneDelegate Register(SceneAction[] actions, Component component)
-        {
-            foreach (SceneDelegate sd in component.GetComponents<SceneDelegate>())
-                if (sd.sceneActions == actions)
-                    return sd;
+            foreach (var sd1 in game_object.GetComponents<SceneDelegate>())
+            {
+                if (sd1.sceneAction == this)
+                {
+                    sd = sd1;
+                    break;
+                }
+            }
+            if (sd == null)
+            {
+                sd = game_object.AddComponent<SceneDelegate>();
+                sd.sceneAction = this;
+            }
+            sd.findHoverMethod = method;
 
-            SceneDelegate newsd = component.gameObject.AddComponent<SceneDelegate>();
-            newsd.sceneActions = actions;
-            return newsd;
-        }
-
-        static public void Unregister(SceneDelegate sd)
-        {
-            sd.sceneActions = new SceneAction[0];
-            Destroy(sd);
+            if (sd.sizeEstimate == 0)
+            {
+                Vector3 scale = game_object.transform.lossyScale;
+                sd.sizeEstimate = scale.magnitude;
+            }
         }
 
         /***************************************************************************************************/
 
         
-        struct FoundDelegate
-        {
-            public SceneDelegate scene_delegate;
-            public float size;
-            public FoundDelegate(SceneDelegate sd, float sz) { scene_delegate = sd; size = sz; }
-        }
-
-        SceneDelegate[] FindDelegateOrder()
+        IEnumerable<SceneDelegate> FindDelegateOrder()
         {
             /* XXX!  This whole logic could use proper caching */
 
@@ -91,21 +91,16 @@ namespace BaroqueUI
              * should be trigger colliders only.  If there are none, we default to a very small
              * sphere around this SceneAction's 'transform.position'.  Remember that SceneAction is 
              * meant to be a child of the controller objects in the hierarchy, so 'transform.position'
-             * and the colliders follow this controller automatically).
+             * and the colliders follow this controller automatically.
              *
              * We compute SceneShapes by looking through the scene for SceneDelegate that have been 
              * registered for this SceneAction.  For each one, its SceneShape is the union of the 
              * colliders on that GameObject and any children.  We stop if we encounter a child with its 
              * own SceneDelegate for the same SceneAction; this child's colliders will be part of that 
              * child's own "scene shape" but not the parent's.
-             * 
-             * If there are several possible SceneShapes, for now we pick the one which is the "smallest"
-             * according to some approximation.  Later we might consider more advanced logic like
-             * considering the parenting between SceneShapes, and whether we are close to the "center"
-             * or not for some definition of "center", etc.
              */
+            var all_sd = new Dictionary<SceneDelegate, bool>();
 
-            List<FoundDelegate> found = new List<FoundDelegate>();
             Collider[] ctrl_colls = GetComponentsInChildren<Collider>();
             if (ctrl_colls.Length == 0)
                 ctrl_colls = new Collider[] { null };   /* hack */
@@ -115,7 +110,7 @@ namespace BaroqueUI
                 Collider[] lst;
                 if (ctrl_coll == null)
                 {
-                    lst = Physics.OverlapSphere(transform.position, 0.001f, layerMask, triggerInteraction);
+                    lst = Physics.OverlapSphere(transform.position, 0.001f, layerMask, collideWithTriggersToo);
                 }
                 else if (ctrl_coll is SphereCollider)
                 {
@@ -124,7 +119,7 @@ namespace BaroqueUI
                     Vector3 v = sc.transform.lossyScale;
                     var scale = Mathf.Max(v.x, v.y, v.z);
                     lst = Physics.OverlapSphere(sc.transform.TransformPoint(sc.center),
-                                                scale * sc.radius, layerMask, triggerInteraction);
+                                                scale * sc.radius, layerMask, collideWithTriggersToo);
                 }
                 else if (ctrl_coll is CapsuleCollider)
                 {
@@ -171,7 +166,7 @@ namespace BaroqueUI
                     Vector3 center = cc.transform.TransformPoint(cc.center);
 
                     lst = Physics.OverlapCapsule(center + delta_v, center - delta_v, radius,
-                                                 layerMask, triggerInteraction);
+                                                 layerMask, collideWithTriggersToo);
                 }
                 else if (ctrl_coll is BoxCollider)
                 {
@@ -180,7 +175,7 @@ namespace BaroqueUI
                     lst = Physics.OverlapBox(bc.transform.TransformPoint(bc.center),
                                              bc.size * 0.5f,
                                              bc.transform.rotation,
-                                             layerMask, triggerInteraction);
+                                             layerMask, collideWithTriggersToo);
                 }
                 else
                 {
@@ -189,66 +184,35 @@ namespace BaroqueUI
                     lst = Physics.OverlapBox(ctrl_coll.transform.TransformPoint(bounds.center),
                                              bounds.extents * 0.5f,
                                              Quaternion.identity,
-                                             layerMask, triggerInteraction);
+                                             layerMask, collideWithTriggersToo);
                 }
 
                 foreach (var coll in lst)
                 {
-                    Vector3 v = coll.bounds.extents;
-                    float size = Mathf.Max(v.x, v.y, v.z);
-
                     foreach (var sd in coll.transform.GetComponentsInParent<SceneDelegate>())
                     {
-                        if (Array.IndexOf(sd.sceneActions, this) >= 0)
-                            found.Add(new FoundDelegate(sd, size));
+                        if (sd.sceneAction == this)
+                            all_sd[sd] = true;
                     }
                 }
             }
-
-            found.Sort((x, y) => x.size.CompareTo(y.size));
-
-            List<SceneDelegate> result_list = new List<SceneDelegate>();
-            Dictionary<SceneDelegate, bool> seen = new Dictionary<SceneDelegate, bool>();
-            foreach (var f in found)
-            {
-                if (!seen.ContainsKey(f.scene_delegate))
-                {
-                    seen[f.scene_delegate] = true;
-                    result_list.Add(f.scene_delegate);
-                }
-            }
-            return result_list.ToArray();
+            return all_sd.Keys;
         }
 
-        public override bool HandleButtonDown(ControllerSnapshot snapshot)
+        public override Hover FindHover(ControllerSnapshot snapshot)
         {
-            foreach (var sd in FindDelegateOrder())
-            {
-                if (sd.buttonDown != null)
-                    if (sd.buttonDown(snapshot))
-                        return true;
-            }
-            return false;
-        }
+            if (!alsoForHovering && !IsPressingButton(snapshot))
+                return null;
 
-        public override void HandleButtonMove(ControllerSnapshot snapshot)
-        {
+            Hover best_hover = null;
             foreach (var sd in FindDelegateOrder())
             {
-                if (sd.buttonMove != null)
-                    sd.buttonMove(snapshot);
+                if (sd.findHoverMethod == null)
+                    continue;
+                Hover hover = sd.findHoverMethod(controllerButton, snapshot);
+                best_hover = Hover.BestHover(best_hover, hover);
             }
-        }
-
-        public override bool HandleButtonUp()
-        {
-            foreach (var sd in FindDelegateOrder())
-            {
-                if (sd.buttonUp != null)
-                    if (sd.buttonUp())
-                        return true;
-            }
-            return false;
+            return best_hover;
         }
     }
 }
