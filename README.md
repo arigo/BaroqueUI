@@ -72,3 +72,7 @@ Each ``SceneAction`` has got a ``sceneActionName``, usually set in the Inspector
 * ``SceneAction.Register(..., hover_instance)``: gives a single fixed Hover.  Will invoke the methods OnButtonXxx() on it.  (If needed, the priority can be set by changing the field ``reverse_priority`` in the Hover instance.)
 
 * ``SceneAction.Register(..., OnFindHover)``: will call ``OnFindHover()`` to figure out which hover to use.
+
+
+Here is an example of using multiple SceneAction objects for the same button.  Say we want to be able to grab an object A with a button, but also if we are close (but not touching) and press the same button, a menu for object A opens.  To implement this, first put a SceneAction with name "My Grabber", and give the object a BaroqueUI_GrabbableObject script with the same name "Grab".  Then put a second SceneAction with name "My Menu".  Put this second SceneAction on a subobject of the Controller and give this subobject a large-ish SphereCollider.  The large SphereCollider makes the action detect objects that are farther away.  Finally, on a custom script of object A, we call 
+``SceneAction.RegisterClick("My Menu", gameObject, OnClick, 10)``.  The large value of ``reverse_priority``, arbitrarily set to 10 here, gives that registration lower priority; the other Hover objects, like the ones built for the "Grab" SceneAction, will take priority.
