@@ -152,42 +152,41 @@ namespace BaroqueUI
                 if (menu != 0 && !snapshot.menuButton)
                     ButtonDown(EControllerButton.TouchpadClick);
 
-                foreach (var action in AllActions())
+                foreach (var action in ActiveActions())
                 {
-                    if (action.enabled && snapshot.GetButton(action.controllerButton))
+                    if (snapshot.GetButton(action.controllerButton))
                         action.HandleButtonMove(snapshot);
                 }
             }
         }
 
-        AbstractControllerAction[] AllActions()
+        List<AbstractControllerAction> ActiveActions(EControllerButton for_button = EControllerButton.NoRestriction)
         {
-            var result = GetComponentsInChildren<AbstractControllerAction>();
-            Array.Reverse(result);
+            var result = new List<AbstractControllerAction>();
+            ListActiveActions(transform, for_button, result);
             return result;
         }
 
-        AbstractControllerAction[] ActiveActionsFor(EControllerButton button)
+        static void ListActiveActions(Transform tr, EControllerButton for_button, List<AbstractControllerAction> result)
         {
-            AbstractControllerAction[] result = AllActions();
-            int keep = 0;
-            for (int i = 0; i < result.Length; i++)
+            var actions = tr.GetComponents<AbstractControllerAction>();
+            for (int i = actions.Length - 1; i >= 0; i--)
             {
-                var action = result[i];
-                if (action.enabled && (
-                        action.controllerButton == EControllerButton.NoRestriction ||
-                        action.controllerButton == button))
-                    result[keep++] = action;
+                AbstractControllerAction action = actions[i];
+                if (action.enabled && (for_button == EControllerButton.NoRestriction ||
+                                       action.controllerButton == EControllerButton.NoRestriction ||
+                                       action.controllerButton == for_button))
+                    result.Add(actions[i]);
             }
-            Array.Resize<AbstractControllerAction>(ref result, keep);
-            return result;
+            for (int i = tr.childCount - 1; i >= 0; i--)
+                ListActiveActions(tr.GetChild(i), for_button, result);
         }
 
         void ButtonDown(EControllerButton button)
         {
             ControllerSnapshot.SetButton(ref snapshot, button, true);
 
-            foreach (var aa in ActiveActionsFor(button))
+            foreach (var aa in ActiveActions(button))
             {
                 if (aa.HandleButtonDown(snapshot))
                     break;
@@ -198,7 +197,7 @@ namespace BaroqueUI
         {
             ControllerSnapshot.SetButton(ref snapshot, button, false);
 
-            foreach (var aa in ActiveActionsFor(button))
+            foreach (var aa in ActiveActions(button))
             {
                 if (aa.HandleButtonUp())
                     break;
