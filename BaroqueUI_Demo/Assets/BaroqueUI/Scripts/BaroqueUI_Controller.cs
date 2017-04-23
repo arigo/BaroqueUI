@@ -65,6 +65,7 @@ namespace BaroqueUI
         }
 
         public virtual void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonOver(EControllerButton button, ControllerSnapshot snapshot) { }
         public virtual void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot) { }
         public virtual void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) { }
         public virtual void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot) { }
@@ -204,16 +205,25 @@ namespace BaroqueUI
                             if (hovers_current[index] != null)
                                 hovers_current[index].OnButtonEnter((EControllerButton)index, snapshot);
                         }
-                    }
-                    else
-                    {
-                        /* button 'index' was already grabbed.  Call OnButtonDrag. */
-                        if (hovers_current[index] != null)
-                            hovers_current[index].OnButtonDrag((EControllerButton)index, snapshot);
+                        if (hovers_current[index] != null)   /* call OnButtonOver. */
+                            hovers_current[index].OnButtonOver((EControllerButton)index, snapshot);
                     }
                 }
                 /* Now call any OnButtonDown. */
                 CallButtonsDowns(button_org);
+
+                /* Call OnButtonDrag. */
+                if (hovers_grabbed != 0)
+                {
+                    for (int index = 0; index < BUTTON_COUNT; index++)
+                    {
+                        if ((hovers_grabbed & (1U << index)) != 0)
+                        {
+                            if (hovers_current[index] != null)
+                                hovers_current[index].OnButtonDrag((EControllerButton)index, snapshot);
+                        }
+                    }
+                }
             }
         }
 
