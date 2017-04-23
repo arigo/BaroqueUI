@@ -63,4 +63,12 @@ The logic behind OnButtonEnter and OnButtonLeave is based on the identity of the
 
 Hover instances are sorted by comparing them.  The default comparison on the Hover base class uses the value of the field "priority".
 
-Each ``SceneAction`` has got a ``sceneActionName``, usually set in the Inspector.  To register scene objects with a particular ``SceneAction`` their script needs to call the static method ``SceneAction.Register("scene_action_name", gameObject, FindHoverMethod)``.  The ``gameObject`` identifies the object whose colliders we consider.  The FindHoverMethod is a delegate that will be called if this gameObject collides with the controller---more precisely, with the object on which ``SceneAction`` is.
+Each ``SceneAction`` has got a ``sceneActionName``, usually set in the Inspector.  To register scene objects with a particular ``SceneAction`` their script needs to call the static method ``SceneAction.RegisterXxx("scene_action_name", gameObject, xxx)``.  The ``gameObject`` identifies the object whose colliders we consider.  Variants, from most basic to most flexible:
+
+* ``SceneAction.RegisterClick(..., OnClick)``: will only call the OnClick method when clicked.
+
+* ``SceneAction.RegisterClick(..., OnClick, reverse_priority)``: same, but with an explicit reverse_priority (a float, by default zero; higher values mean that the Hover will be considered afterwards; negative values are also allowed).
+
+* ``SceneAction.Register(..., hover_instance)``: gives a single fixed Hover.  Will invoke the methods OnButtonXxx() on it.  (If needed, the priority can be set by changing the field ``reverse_priority`` in the Hover instance.)
+
+* ``SceneAction.Register(..., OnFindHover)``: will call ``OnFindHover()`` to figure out which hover to use.

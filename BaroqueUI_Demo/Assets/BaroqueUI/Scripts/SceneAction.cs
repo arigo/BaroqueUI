@@ -90,20 +90,20 @@ namespace BaroqueUI
             Register(game_object, (button, snapshot) => single_hover);
         }
 
-        static public void RegisterClick(string action_name, GameObject game_object, OnClickMethod onClick)
+        static public void RegisterClick(string action_name, GameObject game_object, OnClickMethod onClick, float reverse_priority=0)
         {
-            Register(action_name, game_object, new HoverOnClick(onClick).FindHover);
+            Register(action_name, game_object, new HoverOnClick(onClick, reverse_priority).FindHover);
         }
 
-        public void RegisterClick(GameObject game_object, OnClickMethod onClick)
+        public void RegisterClick(GameObject game_object, OnClickMethod onClick, float reverse_priority = 0)
         {
-            Register(game_object, new HoverOnClick(onClick).FindHover);
+            Register(game_object, new HoverOnClick(onClick, reverse_priority).FindHover);
         }
 
         class HoverOnClick : Hover
         {
             OnClickMethod onClick;
-            internal HoverOnClick(OnClickMethod onClick) { this.onClick = onClick; }
+            internal HoverOnClick(OnClickMethod oc, float rp) : base(rp) { onClick = oc; }
 
             internal Hover FindHover(EControllerButton button, ControllerSnapshot snapshot) {
                 return snapshot.GetButton(button) ? this : null;

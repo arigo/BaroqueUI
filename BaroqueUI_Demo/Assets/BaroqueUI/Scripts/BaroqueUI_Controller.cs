@@ -51,6 +51,9 @@ namespace BaroqueUI
         public float reversed_priority;    /* smaller values have higher priority */
         public int CompareTo(Hover other) { return reversed_priority.CompareTo(other.reversed_priority); }
 
+        public Hover() { }
+        public Hover(float reversed_priority) { this.reversed_priority = reversed_priority; }
+
         public static Hover BestHover(Hover hov1, Hover hov2)
         {
             if (hov1 == null)
