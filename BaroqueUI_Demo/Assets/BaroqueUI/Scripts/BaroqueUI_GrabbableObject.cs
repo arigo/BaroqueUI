@@ -23,33 +23,36 @@ namespace BaroqueUI
              * object identified by 'this' when any collider in the 'gameObject' overlaps any collider in the 'SceneAction'
              * object.  (If the SceneAction object doesn't have any collider we use its Transform's position.)
              */
-            SceneAction.Register(sceneActionName, gameObject, OnFindHover);
+            SceneAction.Register(sceneActionName, gameObject, new GrabHover(this));
         }
 
-        /* OnFindHover always returns the same Hover instance, which we cache.  It could also be cached in a WeakReference,
-         * but it is usually pointless with just one Hover instance.  It may be useful if you have a potentially large number 
-         * of them. 
+        /* NOTE: instead of passing a single Hover to Register(), you can be more dynamic by passing instead a method delegate.
+         * An equivalent way would be: define OnFindHover as follows, and always return the same Hover instance in this case,
+         * which we cache.  It could also be cached in a WeakReference, but it is usually pointless with just one Hover
+         * instance.  It may be useful if you have a potentially large number of them.
          */
+#if false
         GrabHover hover;
 
         Hover OnFindHover(EControllerButton button, ControllerSnapshot snapshot)
         {
             if (hover == null)
-                hover = new GrabHover(transform, this);
+                hover = new GrabHover(transform);
             return hover;
         }
+#endif
 
         class GrabHover : Hover
         {
-            Transform grabbed_object;
             Vector3 origin_position;
             Quaternion origin_rotation;
             BaroqueUI_GrabbableObject grabber;
             Dictionary<Renderer, Material[]> original_materials;
 
-            internal GrabHover(Transform transform, BaroqueUI_GrabbableObject src)
+            Transform grabbed_object { get { return grabber.transform; } }
+
+            internal GrabHover(BaroqueUI_GrabbableObject src)
             {
-                grabbed_object = transform;
                 grabber = src;
                 original_materials = new Dictionary<Renderer, Material[]>();
             }

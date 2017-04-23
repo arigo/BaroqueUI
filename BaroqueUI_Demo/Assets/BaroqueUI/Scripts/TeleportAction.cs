@@ -22,15 +22,25 @@ namespace BaroqueUI
         Transform invalid_reticle, destination_reticle;
         Vector3 destination_position;
 
+        T _LoadLibAsset<T>(string relpath) where T: UnityEngine.Object
+        {
+            T result = AssetDatabase.LoadAssetAtPath<T>("Assets/" + relpath);
+            if (result == null)
+                result = AssetDatabase.LoadAssetAtPath<T>("Assets/Lib/" + relpath);
+            if (result == null)
+                Debug.LogWarning("Cannot locate the asset '" + relpath + "'");
+            return result;
+        }
+
         void Reset()
         {
             controllerButton = EControllerButton.TouchpadClick;
             traceLayerMask = 1 << LayerMask.NameToLayer("Default");
-            teleportMaterial = AssetDatabase.LoadAssetAtPath<Material>(
-                "Assets/SteamVR/InteractionSystem/Teleport/Materials/TeleportPointer.mat");
+            teleportMaterial = _LoadLibAsset<Material>(
+                "SteamVR/InteractionSystem/Teleport/Materials/TeleportPointer.mat");
 
-            GameObject go = AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/SteamVR/InteractionSystem/Teleport/Prefabs/Teleporting.prefab");
+            GameObject go = _LoadLibAsset<GameObject>(
+                "SteamVR/InteractionSystem/Teleport/Prefabs/Teleporting.prefab");
             invalidReticlePrefab = go == null ? null : go.transform.Find("InvalidReticle");
             destinationReticlePrefab = go == null ? null : go.transform.Find("DestinationReticle");
         }

@@ -7,6 +7,7 @@ using UnityEngine;
 namespace BaroqueUI
 {
     public delegate Hover FindHoverMethod(EControllerButton button, ControllerSnapshot snapshot);
+    public delegate void OnClickMethod(EControllerButton button, ControllerSnapshot snapshot);
 
 
     public class SceneDelegate : MonoBehaviour
@@ -79,9 +80,42 @@ namespace BaroqueUI
             }
         }
 
+        static public void Register(string action_name, GameObject game_object, Hover single_hover)
+        {
+            Register(action_name, game_object, (button, snapshot) => single_hover);
+        }
+
+        public void Register(GameObject game_object, Hover single_hover)
+        {
+            Register(game_object, (button, snapshot) => single_hover);
+        }
+
+        static public void RegisterClick(string action_name, GameObject game_object, OnClickMethod onClick)
+        {
+            Register(action_name, game_object, new HoverOnClick(onClick).FindHover);
+        }
+
+        public void RegisterClick(GameObject game_object, OnClickMethod onClick)
+        {
+            Register(game_object, new HoverOnClick(onClick).FindHover);
+        }
+
+        class HoverOnClick : Hover
+        {
+            OnClickMethod onClick;
+            internal HoverOnClick(OnClickMethod onClick) { this.onClick = onClick; }
+
+            internal Hover FindHover(EControllerButton button, ControllerSnapshot snapshot) {
+                return snapshot.GetButton(button) ? this : null;
+            }
+            public override void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) {
+                onClick(button, snapshot);
+            }
+        }
+
         /***************************************************************************************************/
 
-        
+
         IEnumerable<SceneDelegate> FindDelegateOrder()
         {
             /* XXX!  This whole logic could use proper caching */
