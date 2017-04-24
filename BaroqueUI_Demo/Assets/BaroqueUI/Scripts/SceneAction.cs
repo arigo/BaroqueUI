@@ -44,17 +44,17 @@ namespace BaroqueUI
             return result;
         }
 
-        static public void Register(string action_name, GameObject game_object, FindHoverMethod method)
+        static public void RegisterHover(string action_name, GameObject game_object, FindHoverMethod method)
         {
             var actions = SceneAction.ActionsByName(action_name);
             if (actions.Count == 0)
                 throw new ArgumentException("Found no 'SceneAction' with the name '" + action_name + "'");
 
             foreach (var action in actions)
-                action.Register(game_object, method);
+                action.RegisterHover(game_object, method);
         }
 
-        public void Register(GameObject game_object, FindHoverMethod method)
+        public void RegisterHover(GameObject game_object, FindHoverMethod method)
         {
             SceneDelegate sd = null;
 
@@ -80,37 +80,20 @@ namespace BaroqueUI
             }
         }
 
-        static public void Register(string action_name, GameObject game_object, Hover single_hover)
+        static public void Register(string action_name, GameObject game_object, float reversed_priority=0,
+                               HoverDelegate buttonEnter = null, HoverDelegate buttonOver = null, HoverDelegate buttonLeave = null,
+                               HoverDelegate buttonDown = null, HoverDelegate buttonDrag = null, HoverDelegate buttonUp = null)
         {
-            Register(action_name, game_object, (button, snapshot) => single_hover);
+            var hover = new DelegatingHover(reversed_priority, buttonEnter, buttonOver, buttonLeave, buttonDown, buttonDrag, buttonUp);
+            RegisterHover(action_name, game_object, hover.FindHover);
         }
 
-        public void Register(GameObject game_object, Hover single_hover)
+        public void RegisterClick(GameObject game_object, float reversed_priority=0,
+                               HoverDelegate buttonEnter = null, HoverDelegate buttonOver = null, HoverDelegate buttonLeave = null,
+                               HoverDelegate buttonDown = null, HoverDelegate buttonDrag = null, HoverDelegate buttonUp = null)
         {
-            Register(game_object, (button, snapshot) => single_hover);
-        }
-
-        static public void RegisterClick(string action_name, GameObject game_object, OnClickMethod onClick, float reverse_priority=0)
-        {
-            Register(action_name, game_object, new HoverOnClick(onClick, reverse_priority).FindHover);
-        }
-
-        public void RegisterClick(GameObject game_object, OnClickMethod onClick, float reverse_priority = 0)
-        {
-            Register(game_object, new HoverOnClick(onClick, reverse_priority).FindHover);
-        }
-
-        class HoverOnClick : Hover
-        {
-            OnClickMethod onClick;
-            internal HoverOnClick(OnClickMethod oc, float rp) : base(rp) { onClick = oc; }
-
-            internal Hover FindHover(EControllerButton button, ControllerSnapshot snapshot) {
-                return snapshot.GetButton(button) ? this : null;
-            }
-            public override void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) {
-                onClick(button, snapshot);
-            }
+            var hover = new DelegatingHover(reversed_priority, buttonEnter, buttonOver, buttonLeave, buttonDown, buttonDrag, buttonUp);
+            RegisterHover(game_object, hover.FindHover);
         }
 
         /***************************************************************************************************/
@@ -134,9 +117,18 @@ namespace BaroqueUI
              * child's own "scene shape" but not the parent's.
              */
             var all_sd = new Dictionary<SceneDelegate, bool>();
+            Collider[] ctrl_colls = null;
 
-            Collider[] ctrl_colls = GetComponentsInChildren<Collider>();
-            if (ctrl_colls.Length == 0)
+            if (GetComponent<SteamVR_TrackedObject>() != null)
+            {
+                /* SceneAction directly on the controller gameobject: don't use the Colliders, which 
+                 * would be all colliders everywhere in this Controller */
+            }
+            else
+            {
+                ctrl_colls = GetComponentsInChildren<Collider>();
+            }
+            if (ctrl_colls == null || ctrl_colls.Length == 0)
                 ctrl_colls = new Collider[] { null };   /* hack */
 
             foreach (var ctrl_coll in ctrl_colls)

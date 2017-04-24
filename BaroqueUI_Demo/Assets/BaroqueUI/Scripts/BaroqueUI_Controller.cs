@@ -46,6 +46,8 @@ namespace BaroqueUI
     }
 
 
+    public delegate void HoverDelegate(EControllerButton button, ControllerSnapshot snapshot);
+
     public class Hover : IComparable<Hover>
     {
         public float reversed_priority;    /* smaller values have higher priority */
@@ -70,6 +72,62 @@ namespace BaroqueUI
         public virtual void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) { }
         public virtual void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot) { }
         public virtual void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot) { }
+    }
+
+    public class DelegatingHover : Hover
+    {
+        public HoverDelegate buttonEnter, buttonOver, buttonLeave, buttonDown, buttonDrag, buttonUp;
+
+        public DelegatingHover(float reversed_priority=0,
+                               HoverDelegate buttonEnter=null, HoverDelegate buttonOver=null, HoverDelegate buttonLeave=null,
+                               HoverDelegate buttonDown=null, HoverDelegate buttonDrag=null, HoverDelegate buttonUp=null)
+            : base(reversed_priority)
+        {
+            this.buttonEnter = buttonEnter;
+            this.buttonOver  = buttonOver;
+            this.buttonLeave = buttonLeave;
+            this.buttonDown  = buttonDown;
+            this.buttonDrag  = buttonDrag;
+            this.buttonUp    = buttonUp;
+        }
+
+        public Hover FindHover(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (snapshot.GetButton(button) || buttonEnter != null || buttonOver != null || buttonLeave != null)
+                return this;
+            return null;
+        }
+
+        public override void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonEnter != null)
+                buttonEnter(button, snapshot);
+        }
+        public override void OnButtonOver(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonOver != null)
+                buttonOver(button, snapshot);
+        }
+        public override void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonLeave != null)
+                buttonLeave(button, snapshot);
+        }
+        public override void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonDown != null)
+                buttonDown(button, snapshot);
+        }
+        public override void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonDrag != null)
+                buttonDrag(button, snapshot);
+        }
+        public override void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot)
+        {
+            if (buttonUp != null)
+                buttonUp(button, snapshot);
+        }
     }
 
 
