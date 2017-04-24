@@ -148,6 +148,9 @@ namespace BaroqueUI
         public SteamVR_TrackedObject trackedObject;
         public ControllerSnapshot snapshot;
 
+        public Vector3 velocity { get { return GetVelocity(); } }
+        public Vector3 angularVelocity { get { return GetAngularVelocity(); } }   /* same as Rigidbody's */
+
         static SteamVR_ControllerManager controllerManager;
         VRControllerState_t controllerState;
         SteamVR_Events.Action newPosesAppliedAction;
@@ -165,17 +168,16 @@ namespace BaroqueUI
 
             foreach (EControllerButton button in Enum.GetValues(typeof(EControllerButton)))
                 BUTTON_COUNT = Math.Max(BUTTON_COUNT, 1 + (int)button);
-            hovers_current = new HoverAndAction[BUTTON_COUNT];
-            hovers_grabbed = 0;
 
             trackedObject = GetComponent<SteamVR_TrackedObject>();
             newPosesAppliedAction = SteamVR_Events.NewPosesAppliedAction(OnNewPosesApplied);
-            newPosesAppliedAction.enabled = false;
+            OnDisable();   /* until enabled */
         }
 
         void OnEnable()
         {
             newPosesAppliedAction.enabled = true;
+            InitializeVelocityEstimates();
         }
 
         void OnDisable()
@@ -185,6 +187,18 @@ namespace BaroqueUI
             uint button_org = snapshot._buttons;
             snapshot._buttons = 0;
             CallButtonsUps(button_org);
+            hovers_grabbed = 0;
+
+            if (hovers_current != null)
+            {
+                for (int index = BUTTON_COUNT - 1; index >= 0; index--)
+                {
+                    HoverAndAction cur = hovers_current[index];
+                    if (cur.hover != null)
+                        cur.hover.OnButtonLeave(cur.action, snapshot);
+                }
+            }
+            hovers_current = new HoverAndAction[BUTTON_COUNT];
         }
 
         void OnNewPosesApplied()
@@ -207,7 +221,8 @@ namespace BaroqueUI
                 if (trigger == 0) b &= ~(1U << (int)EControllerButton.Trigger);
                 snapshot._buttons = b;
                 CallButtonsUps(button_org);
-                
+
+                UpdatingVelocityEstimates();
                 snapshot.position = transform.position;
                 snapshot.rotation = transform.rotation;
 
@@ -365,6 +380,75 @@ namespace BaroqueUI
 
             otherController = BuildFromObjectInside(gobj);
             return otherController;
+        }
+
+        /*****************************************************************************************/
+
+        const int DAMP_VELOCITY = 4;
+
+        struct PrevLocation { public float time; public Vector3 position; public Quaternion rotation; };
+        PrevLocation[] damped;
+
+        void InitializeVelocityEstimates()
+        {
+            damped = new PrevLocation[DAMP_VELOCITY + 1];
+            for (int i = 0; i <= DAMP_VELOCITY; i++)
+                damped[i].time = float.NegativeInfinity;
+        }
+
+        void UpdatingVelocityEstimates()
+        {
+            Array.Copy(damped, 1, damped, 0, DAMP_VELOCITY);
+            damped[DAMP_VELOCITY].time = Time.time;
+            damped[DAMP_VELOCITY].position = snapshot.position;
+            damped[DAMP_VELOCITY].rotation = snapshot.rotation;
+        }
+
+        Vector3 GetVelocity()
+        {
+            float minSqr = float.PositiveInfinity;
+            Vector3 result = Vector3.zero;
+            float current_time = damped[DAMP_VELOCITY].time;
+
+            for (int i = 0; i < DAMP_VELOCITY; i++)
+            {
+                Vector3 v = (damped[DAMP_VELOCITY].position - damped[i].position) / (current_time - damped[i].time);
+                float sqr = v.sqrMagnitude;
+                if (sqr < minSqr)
+                {
+                    minSqr = sqr;
+                    result = v;
+                }
+            }
+            return result;
+        }
+
+        Vector3 GetAngularVelocity()
+        {
+            /* xxx check this */
+            float minSqr = float.PositiveInfinity;
+            float current_time = damped[DAMP_VELOCITY].time;
+            Quaternion inverse_rotation = Quaternion.Inverse(damped[DAMP_VELOCITY].rotation);
+            Vector3 result = Vector3.zero;
+
+            for (int i = 0; i < DAMP_VELOCITY; i++)
+            {
+                Quaternion q = damped[i].rotation * inverse_rotation;
+                float angleInDegrees;
+                Vector3 rotationAxis;
+                q.ToAngleAxis(out angleInDegrees, out rotationAxis);
+
+                Vector3 angularDisplacement = rotationAxis * angleInDegrees * Mathf.Deg2Rad;
+                Vector3 v = angularDisplacement / (current_time - damped[i].time);
+
+                float sqr = v.sqrMagnitude;
+                if (sqr < minSqr)
+                {
+                    minSqr = sqr;
+                    result = v;
+                }
+            }
+            return -result;
         }
     }
 }

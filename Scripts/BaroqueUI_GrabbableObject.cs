@@ -38,9 +38,11 @@ namespace BaroqueUI
         }
 
 
+        Vector3 previous_position;
         Vector3 origin_position;
         Quaternion origin_rotation;
         Dictionary<Renderer, Material[]> original_materials;
+        Rigidbody original_nonkinematic;
 
         static Color ColorCombine(Color base_col, Color mask_col)
         {
@@ -106,6 +108,18 @@ namespace BaroqueUI
 
             /* We also change the color to dragColor. */
             ChangeColor(dragColor);
+
+            /* Make the object kinematic, if it has a Rigidbody */
+            original_nonkinematic = GetComponent<Rigidbody>();
+            if (original_nonkinematic != null)
+            {
+                if (original_nonkinematic.isKinematic)
+                    original_nonkinematic = null;
+                else
+                    original_nonkinematic.isKinematic = true;
+            }
+
+            previous_position = snapshot.position;
         }
 
         void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
@@ -124,6 +138,14 @@ namespace BaroqueUI
              * controller has also left the object's proximity.
              */
             ChangeColor(highlightColor);
+
+            if (original_nonkinematic != null)
+            {
+                original_nonkinematic.velocity = snapshot.controller.velocity;
+                original_nonkinematic.angularVelocity = snapshot.controller.angularVelocity;
+                original_nonkinematic.isKinematic = false;
+                original_nonkinematic = null;
+            }
         }
     }
 }
