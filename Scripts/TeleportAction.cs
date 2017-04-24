@@ -8,7 +8,7 @@ using Valve.VR;
 
 namespace BaroqueUI
 {
-    public class TeleportAction : AbstractControllerAction
+    public class TeleportAction : ControllerAction
     {
         [Header("Teleport beam parameters")]
         public float beamVelocity = 10f;
@@ -99,7 +99,7 @@ namespace BaroqueUI
                 this.teleport = teleport;
             }
 
-            public override void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot)
+            public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
             {
                 /* This is called just after the class is instantiated, but only if this Hover is really
                  * selected by the logic of priorities is the end. 
@@ -107,7 +107,7 @@ namespace BaroqueUI
                 teleport.arc.Show();
             }
 
-            public override void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot)
+            public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
             {
                 bool saved = Physics.queriesHitTriggers;
                 try
@@ -158,7 +158,7 @@ namespace BaroqueUI
                 }
             }
 
-            public override void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot)
+            public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
             {
                 teleport.arc.Hide();
                 teleport.invalid_reticle.gameObject.SetActive(false);

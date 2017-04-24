@@ -27,13 +27,6 @@ namespace BaroqueUI
             return (_buttons & (1U << (int)btn)) != 0;
         }
 
-        public Vector3 back { get { return rotation * Vector3.back; } }
-        public Vector3 down { get { return rotation * Vector3.down; } }
-        public Vector3 forward { get { return rotation * Vector3.forward; } }
-        public Vector3 left { get { return rotation * Vector3.left; } }
-        public Vector3 right { get { return rotation * Vector3.right; } }
-        public Vector3 up { get { return rotation * Vector3.up; } }
-
         public GameObject ThisControllerObject()
         {
             return controller.gameObject;
@@ -46,7 +39,7 @@ namespace BaroqueUI
     }
 
 
-    public delegate void HoverDelegate(EControllerButton button, ControllerSnapshot snapshot);
+    public delegate void HoverDelegate(ControllerAction action, ControllerSnapshot snapshot);
 
     public class Hover : IComparable<Hover>
     {
@@ -56,22 +49,22 @@ namespace BaroqueUI
         public Hover() { }
         public Hover(float reversed_priority) { this.reversed_priority = reversed_priority; }
 
-        public static Hover BestHover(Hover hov1, Hover hov2)
+        public static bool IsBetterHover(Hover hov1, Hover hov2)
         {
             if (hov1 == null)
-                return hov2;
-            else if (hov2 == null || hov2.CompareTo(hov1) > 0)
-                return hov1;
+                return false;
+            else if (hov2 == null)
+                return true;
             else
-                return hov2;
+                return hov2.CompareTo(hov1) > 0;
         }
 
-        public virtual void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot) { }
-        public virtual void OnButtonOver(EControllerButton button, ControllerSnapshot snapshot) { }
-        public virtual void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot) { }
-        public virtual void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot) { }
-        public virtual void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot) { }
-        public virtual void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot) { }
+        public virtual void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot) { }
     }
 
     public class DelegatingHover : Hover
@@ -91,47 +84,47 @@ namespace BaroqueUI
             this.buttonUp    = buttonUp;
         }
 
-        public Hover FindHover(EControllerButton button, ControllerSnapshot snapshot)
+        public Hover FindHover(ControllerAction action, ControllerSnapshot snapshot)
         {
-            if (snapshot.GetButton(button) || buttonEnter != null || buttonOver != null || buttonLeave != null)
+            if (action.IsPressingButton(snapshot) || buttonEnter != null || buttonOver != null || buttonLeave != null)
                 return this;
             return null;
         }
 
-        public override void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonEnter != null)
-                buttonEnter(button, snapshot);
+                buttonEnter(action, snapshot);
         }
-        public override void OnButtonOver(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonOver != null)
-                buttonOver(button, snapshot);
+                buttonOver(action, snapshot);
         }
-        public override void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonLeave != null)
-                buttonLeave(button, snapshot);
+                buttonLeave(action, snapshot);
         }
-        public override void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonDown != null)
-                buttonDown(button, snapshot);
+                buttonDown(action, snapshot);
         }
-        public override void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonDrag != null)
-                buttonDrag(button, snapshot);
+                buttonDrag(action, snapshot);
         }
-        public override void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot)
+        public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
         {
             if (buttonUp != null)
-                buttonUp(button, snapshot);
+                buttonUp(action, snapshot);
         }
     }
 
 
-    public abstract class AbstractControllerAction : MonoBehaviour
+    public abstract class ControllerAction : MonoBehaviour
     {
         public EControllerButton controllerButton;
         public BaroqueUI_Controller controller { get; private set; }
@@ -141,7 +134,7 @@ namespace BaroqueUI
             controller = BaroqueUI_Controller.BuildFromObjectInside(gameObject);
         }
 
-        protected bool IsPressingButton(ControllerSnapshot snapshot)
+        public bool IsPressingButton(ControllerSnapshot snapshot)
         {
             return snapshot.GetButton(controllerButton);
         }
@@ -160,7 +153,9 @@ namespace BaroqueUI
         SteamVR_Events.Action newPosesAppliedAction;
         BaroqueUI_Controller otherController;
 
-        Hover[] hovers_current;
+        struct HoverAndAction { public Hover hover; public ControllerAction action; };
+
+        HoverAndAction[] hovers_current;
         uint hovers_grabbed;
         int BUTTON_COUNT;
 
@@ -170,7 +165,7 @@ namespace BaroqueUI
 
             foreach (EControllerButton button in Enum.GetValues(typeof(EControllerButton)))
                 BUTTON_COUNT = Math.Max(BUTTON_COUNT, 1 + (int)button);
-            hovers_current = new Hover[BUTTON_COUNT];
+            hovers_current = new HoverAndAction[BUTTON_COUNT];
             hovers_grabbed = 0;
 
             trackedObject = GetComponent<SteamVR_TrackedObject>();
@@ -229,8 +224,8 @@ namespace BaroqueUI
                 snapshot._buttons = b;
                 
                 /* XXX try to cache the result of GetComponentsInChildren */
-                Hover[] hovers_new = new Hover[BUTTON_COUNT];
-                foreach (var action in GetComponentsInChildren<AbstractControllerAction>())
+                HoverAndAction[] hovers_new = new HoverAndAction[BUTTON_COUNT];
+                foreach (var action in GetComponentsInChildren<ControllerAction>())
                 {
                     int index = (int)action.controllerButton;
                     if ((hovers_grabbed & (1U << index)) == 0)
@@ -241,7 +236,11 @@ namespace BaroqueUI
                          * or really for pressing, with IsPressingButton().
                          */
                         Hover hover = action.FindHover(snapshot);
-                        hovers_new[index] = Hover.BestHover(hovers_new[index], hover);
+                        if (Hover.IsBetterHover(hover, hovers_new[index].hover))
+                        {
+                            hovers_new[index].hover = hover;
+                            hovers_new[index].action = action;
+                        }
                     }
                 }
                 for (int index = BUTTON_COUNT - 1; index >= 0; index--)
@@ -249,8 +248,9 @@ namespace BaroqueUI
                     if ((hovers_grabbed & (1U << index)) == 0)
                     {
                         /* button 'index' is not grabbed so far.  Call OnButtonLeave if we leave the old Hover. */
-                        if (hovers_new[index] != hovers_current[index] && hovers_current[index] != null)
-                            hovers_current[index].OnButtonLeave((EControllerButton)index, snapshot);
+                        HoverAndAction cur = hovers_current[index];
+                        if (cur.hover != null && hovers_new[index].hover != cur.hover)
+                            cur.hover.OnButtonLeave(cur.action, snapshot);
                     }
                 }
                 for (int index = 0; index < BUTTON_COUNT; index++)
@@ -259,14 +259,15 @@ namespace BaroqueUI
                     {
                         /* button 'index' is not grabbed so far.  Update hovers_current and call OnButtonEnter
                          * if that changes. */
-                        if (hovers_new[index] != hovers_current[index])
+                        HoverAndAction cur = hovers_current[index];
+                        if (hovers_new[index].hover != cur.hover)
                         {
-                            hovers_current[index] = hovers_new[index];
-                            if (hovers_current[index] != null)
-                                hovers_current[index].OnButtonEnter((EControllerButton)index, snapshot);
+                            cur = hovers_current[index] = hovers_new[index];
+                            if (cur.hover != null)
+                                cur.hover.OnButtonEnter(cur.action, snapshot);
                         }
-                        if (hovers_current[index] != null)   /* call OnButtonOver. */
-                            hovers_current[index].OnButtonOver((EControllerButton)index, snapshot);
+                        if (cur.hover != null)   /* call OnButtonOver. */
+                            cur.hover.OnButtonOver(cur.action, snapshot);
                     }
                 }
                 /* Now call any OnButtonDown. */
@@ -279,8 +280,9 @@ namespace BaroqueUI
                     {
                         if ((hovers_grabbed & (1U << index)) != 0)
                         {
-                            if (hovers_current[index] != null)
-                                hovers_current[index].OnButtonDrag((EControllerButton)index, snapshot);
+                            HoverAndAction cur = hovers_current[index];
+                            if (cur.hover != null)
+                                cur.hover.OnButtonDrag(cur.action, snapshot);
                         }
                     }
                 }
@@ -296,8 +298,9 @@ namespace BaroqueUI
             {
                 if ((change & (1U << index)) != 0)
                 {
-                    if (hovers_current[index] != null)
-                        hovers_current[index].OnButtonDown((EControllerButton)index, snapshot);
+                    HoverAndAction cur = hovers_current[index];
+                    if (cur.hover != null)
+                        cur.hover.OnButtonDown(cur.action, snapshot);
                     hovers_grabbed |= (1U << index);
                 }
             }
@@ -312,8 +315,9 @@ namespace BaroqueUI
             {
                 if ((change & (1U << index)) != 0)
                 {
-                    if (hovers_current[index] != null)
-                        hovers_current[index].OnButtonUp((EControllerButton)index, snapshot);
+                    HoverAndAction cur = hovers_current[index];
+                    if (cur.hover != null)
+                        cur.hover.OnButtonUp(cur.action, snapshot);
                     hovers_grabbed &= ~(1U << index);
                 }
             }

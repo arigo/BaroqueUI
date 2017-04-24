@@ -6,8 +6,7 @@ using UnityEngine;
 
 namespace BaroqueUI
 {
-    public delegate Hover FindHoverMethod(EControllerButton button, ControllerSnapshot snapshot);
-    public delegate void OnClickMethod(EControllerButton button, ControllerSnapshot snapshot);
+    public delegate Hover FindHoverMethod(ControllerAction action, ControllerSnapshot snapshot);
 
 
     public class SceneDelegate : MonoBehaviour
@@ -18,7 +17,7 @@ namespace BaroqueUI
     }
 
 
-    public class SceneAction : AbstractControllerAction
+    public class SceneAction : ControllerAction
     {
         [Header("Scene action parameters")]
         public string actionName;
@@ -235,8 +234,9 @@ namespace BaroqueUI
             {
                 if (sd.findHoverMethod == null)
                     continue;
-                Hover hover = sd.findHoverMethod(controllerButton, snapshot);
-                best_hover = Hover.BestHover(best_hover, hover);
+                Hover hover = sd.findHoverMethod(this, snapshot);
+                if (Hover.IsBetterHover(hover, best_hover))
+                    best_hover = hover;
             }
             return best_hover;
         }

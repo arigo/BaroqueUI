@@ -27,7 +27,7 @@ namespace BaroqueUI
                 buttonEnter: OnButtonEnter, buttonLeave: OnButtonLeave,
                 buttonDown: OnButtonDown, buttonDrag: OnButtonDrag, buttonUp: OnButtonUp);
 
-            /* Note that you can also use that style:   buttonEnter: (button, snapshot) => { do_stuff; }
+            /* Note that you can also use that style:   buttonEnter: (action, snapshot) => { do_stuff; }
              */
 
             /* See also RegisterHover(), which is more dynamic: it lets you pass a method delegate that discovers which
@@ -83,20 +83,20 @@ namespace BaroqueUI
             }
         }
 
-        void OnButtonEnter(EControllerButton button, ControllerSnapshot snapshot)
+        void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* OnButtonEnter: we are entering the grabbed object's volume.  Change to highlightColor. */
             ChangeColor(highlightColor);
         }
 
-        void OnButtonLeave(EControllerButton button, ControllerSnapshot snapshot)
+        void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* OnButtonLeave: we are leaving the grabbed object's volume.  Change to Color.clear,
                 * which restores the original materials. */
             ChangeColor(Color.clear);
         }
 
-        void OnButtonDown(EControllerButton button, ControllerSnapshot snapshot)
+        void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* Called when the button is pressed.  'snapshot' contains a snapshot of the controller position, which buttons 
                 * are down, and the touchpad position.  Note that 'ControllerSnapshot' is a 'struct', not a 'class'.
@@ -108,14 +108,14 @@ namespace BaroqueUI
             ChangeColor(dragColor);
         }
 
-        void OnButtonDrag(EControllerButton button, ControllerSnapshot snapshot)
+        void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* Dragging... */
             transform.rotation = snapshot.rotation * origin_rotation;
             transform.position = snapshot.position + transform.rotation * origin_position;
         }
 
-        void OnButtonUp(EControllerButton button, ControllerSnapshot snapshot)
+        void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* OnButtonUp: we revert the color back to highlightColor.  Note that the order of the events
              * is well-defined: a OnButtonEnter is always sent before OnButtonDown, which is always sent
