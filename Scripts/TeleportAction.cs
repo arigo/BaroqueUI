@@ -34,7 +34,7 @@ namespace BaroqueUI
 
         void Reset()
         {
-            controllerButton = EControllerButton.TouchpadClick;
+            controllerButton = EControllerButton.Touchpad;
             traceLayerMask = 1 << LayerMask.NameToLayer("Default");
             teleportMaterial = _LoadLibAsset<Material>(
                 "SteamVR/InteractionSystem/Teleport/Materials/TeleportPointer.mat");

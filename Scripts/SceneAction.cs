@@ -14,7 +14,7 @@ namespace BaroqueUI
     {
         public SceneAction sceneAction;
         public FindHoverMethod findHoverMethod;
-        public float sizeEstimate;
+        //public float sizeEstimate;
     }
 
 
@@ -73,11 +73,11 @@ namespace BaroqueUI
             }
             sd.findHoverMethod = method;
 
-            if (sd.sizeEstimate == 0)
+            /*if (sd.sizeEstimate == 0)
             {
                 Vector3 scale = game_object.transform.lossyScale;
                 sd.sizeEstimate = scale.magnitude;
-            }
+            }*/
         }
 
         static public void Register(string action_name, GameObject game_object, float reversed_priority=0,

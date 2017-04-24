@@ -10,21 +10,21 @@ namespace BaroqueUI
 
     public enum EControllerButton
     {
-        TriggerClick, TouchpadTouch, TouchpadClick, GripButton, MenuButton
+        Trigger, Touchpad, Grip, Menu
     }
 
 
     public struct ControllerSnapshot
     {
         public BaroqueUI_Controller controller;
-        internal uint buttons;
+        internal uint _buttons;
         public Vector3 position;
         public Quaternion rotation;
-        public Vector2 touchpadPosition;
+        public Vector2? touchpadPosition;   /* null if not touching the touchpad */
 
         public bool GetButton(EControllerButton btn)
         {
-            return (buttons & (1U << (int)btn)) != 0;
+            return (_buttons & (1U << (int)btn)) != 0;
         }
 
         public Vector3 back { get { return rotation * Vector3.back; } }
@@ -187,8 +187,8 @@ namespace BaroqueUI
         {
             newPosesAppliedAction.enabled = false;
 
-            uint button_org = snapshot.buttons;
-            snapshot.buttons = 0;
+            uint button_org = snapshot._buttons;
+            snapshot._buttons = 0;
             CallButtonsUps(button_org);
         }
 
@@ -205,26 +205,28 @@ namespace BaroqueUI
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
 
                 uint button_org, b;
-                b = button_org = snapshot.buttons;
-                if (menu == 0) b &= ~(1U << (int)EControllerButton.MenuButton);
-                if (grip == 0) b &= ~(1U << (int)EControllerButton.GripButton);
-                if (pad == 0) b &= ~(1U << (int)EControllerButton.TouchpadClick);
-                if (touch == 0) b &= ~(1U << (int)EControllerButton.TouchpadTouch);
-                if (trigger == 0) b &= ~(1U << (int)EControllerButton.TriggerClick);
-                snapshot.buttons = b;
+                b = button_org = snapshot._buttons;
+                if (menu == 0) b &= ~(1U << (int)EControllerButton.Menu);
+                if (grip == 0) b &= ~(1U << (int)EControllerButton.Grip);
+                if (pad == 0) b &= ~(1U << (int)EControllerButton.Touchpad);
+                if (trigger == 0) b &= ~(1U << (int)EControllerButton.Trigger);
+                snapshot._buttons = b;
                 CallButtonsUps(button_org);
                 
                 snapshot.position = transform.position;
                 snapshot.rotation = transform.rotation;
-                snapshot.touchpadPosition = new Vector2(controllerState.rAxis0.x, controllerState.rAxis0.y);
 
-                b = button_org = snapshot.buttons;
-                if (trigger != 0) b |= (1U << (int)EControllerButton.TriggerClick);
-                if (touch != 0) b |= (1U << (int)EControllerButton.TouchpadTouch);
-                if (pad != 0) b |= (1U << (int)EControllerButton.TouchpadClick);
-                if (grip != 0) b |= (1U << (int)EControllerButton.GripButton);
-                if (menu != 0) b |= (1U << (int)EControllerButton.MenuButton);
-                snapshot.buttons = b;
+                if (touch != 0)
+                    snapshot.touchpadPosition = new Vector2(controllerState.rAxis0.x, controllerState.rAxis0.y);
+                else
+                    snapshot.touchpadPosition = null;
+
+                b = button_org = snapshot._buttons;
+                if (trigger != 0) b |= (1U << (int)EControllerButton.Trigger);
+                if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
+                if (grip != 0) b |= (1U << (int)EControllerButton.Grip);
+                if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
+                snapshot._buttons = b;
                 
                 /* XXX try to cache the result of GetComponentsInChildren */
                 Hover[] hovers_new = new Hover[BUTTON_COUNT];
@@ -287,7 +289,7 @@ namespace BaroqueUI
 
         void CallButtonsDowns(uint button_org)
         {
-            uint change = ~button_org & snapshot.buttons;
+            uint change = ~button_org & snapshot._buttons;
             if (change == 0)
                 return;
             for (int index = 0; index < BUTTON_COUNT; index++)
@@ -303,7 +305,7 @@ namespace BaroqueUI
 
         void CallButtonsUps(uint button_org)
         {
-            uint change = button_org & ~snapshot.buttons;
+            uint change = button_org & ~snapshot._buttons;
             if (change == 0)
                 return;
             for (int index = BUTTON_COUNT - 1; index >= 0; index--)
