@@ -77,10 +77,10 @@ namespace BaroqueUI
                         original_materials[rend] = rend.sharedMaterials;
 
                     Material[] orgs = original_materials[rend];
-                    Material[] mats = rend.materials;
+                    Material[] mats = rend.materials;    /* makes a copy */
                     for (int i = 0; i < orgs.Length; i++)
                         mats[i].SetColor("_Color", ColorCombine(orgs[i].GetColor("_Color"), color));
-                    rend.materials = mats;
+                    rend.sharedMaterials = mats;    /* assign that copy without making _another_ copy */
                 }
             }
         }
