@@ -36,6 +36,11 @@ namespace BaroqueUI
         {
             return controller.GetOtherController().gameObject;
         }
+
+        public GameObject HeadObject()
+        {
+            return controller.GetHead().gameObject;
+        }
     }
 
 
@@ -56,7 +61,10 @@ namespace BaroqueUI
             else if (hov2 == null)
                 return true;
             else
+            {
+                //Debug.LogFormat("IsBetterHover: {0} -- {1}", hov1.reversed_priority, hov2.reversed_priority);
                 return hov2.CompareTo(hov1) > 0;
+            }
         }
 
         public virtual void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot) { }
@@ -155,6 +163,7 @@ namespace BaroqueUI
         VRControllerState_t controllerState;
         SteamVR_Events.Action newPosesAppliedAction;
         BaroqueUI_Controller otherController;
+        SteamVR_Camera head;
 
         struct HoverAndAction { public Hover hover; public ControllerAction action; };
 
@@ -390,6 +399,19 @@ namespace BaroqueUI
 
             otherController = BuildFromObjectInside(gobj);
             return otherController;
+        }
+
+        public SteamVR_Camera GetHead()
+        {
+            if (head != null)
+                return head;
+
+            SteamVR_ControllerManager mgr = FindSteamVRControllerManager();
+            head = mgr.GetComponentInChildren<SteamVR_Camera>();
+            if (head == null)
+                throw new MissingComponentException("'SteamVR_Camera' not found anywhere inside the SteamVR_ControllerManager");
+
+            return head;
         }
 
         /*****************************************************************************************/
