@@ -171,7 +171,7 @@ namespace BaroqueUI
 
             trackedObject = GetComponent<SteamVR_TrackedObject>();
             newPosesAppliedAction = SteamVR_Events.NewPosesAppliedAction(OnNewPosesApplied);
-            OnDisable();   /* until enabled */
+            SetupDisabledState();   /* until enabled */
         }
 
         void OnEnable()
@@ -181,6 +181,16 @@ namespace BaroqueUI
         }
 
         void OnDisable()
+        {
+            /* the scene might be unloading right now.  We need to hack to detect that case.
+             * I hope this hack actually works; it seems to be the case that the parent is
+             * already disabled when we get OnDisable in that case.
+             */
+            if (transform.parent.gameObject.activeSelf)
+                SetupDisabledState();
+        }
+
+        void SetupDisabledState()
         {
             newPosesAppliedAction.enabled = false;
 
