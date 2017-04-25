@@ -73,14 +73,40 @@ namespace BaroqueUI
 
                 foreach (var rend in GetComponentsInChildren<Renderer>())
                 {
-                    if (!original_materials.ContainsKey(rend))
-                        original_materials[rend] = rend.sharedMaterials;
+                    /* NB. the handling of ".materials" by Unity is an attempt at being helpful,
+                     * in a way that gives convoluted results.  For example, reading "rend.materials"
+                     * creates a clone of the Material objects if they are flagged 'from the editor'.
+                     * But it doesn't if they is a Material object created elsewhere programmatically
+                     * and assigned to several objects: in this case, the naive logic would change the
+                     * color of all these objects.
+                     * 
+                     * To take better control of what's going on, we only access ".sharedMaterials",
+                     * which gives a direct read/write interface without any copying; and we copy
+                     * ourselves when needed.
+                     * 
+                     * A second warning: don't use Instantiate<>() too freely.  It makes objects with
+                     * a name that is the original name + " (clone)".  If you keep cloning clones,
+                     * then the length of the name can be a performance issue after a while...
+                     */
+                    Material[] org_mats;
 
-                    Material[] orgs = original_materials[rend];
-                    Material[] mats = rend.materials;    /* makes a copy */
-                    for (int i = 0; i < orgs.Length; i++)
-                        mats[i].SetColor("_Color", ColorCombine(orgs[i].GetColor("_Color"), color));
-                    rend.sharedMaterials = mats;    /* assign that copy without making _another_ copy */
+                    if (original_materials.ContainsKey(rend))
+                    {
+                        org_mats = original_materials[rend];
+                    }
+                    else
+                    {
+                        org_mats = original_materials[rend] = rend.sharedMaterials;
+
+                        Material[] new_mats = new Material[org_mats.Length];
+                        for (int i = 0; i < new_mats.Length; i++)
+                            new_mats[i] = Instantiate<Material>(org_mats[i]);
+                        rend.sharedMaterials = new_mats;
+                    }
+
+                    Material[] mats = rend.sharedMaterials;
+                    for (int i = 0; i < mats.Length; i++)
+                        mats[i].SetColor("_Color", ColorCombine(org_mats[i].GetColor("_Color"), color));
                 }
             }
         }
