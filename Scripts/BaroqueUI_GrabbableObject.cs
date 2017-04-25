@@ -38,7 +38,6 @@ namespace BaroqueUI
         }
 
 
-        Vector3 previous_position;
         Vector3 origin_position;
         Quaternion origin_rotation;
         Dictionary<Renderer, Material[]> original_materials;
@@ -144,8 +143,6 @@ namespace BaroqueUI
                 else
                     original_nonkinematic.isKinematic = true;
             }
-
-            previous_position = snapshot.position;
         }
 
         void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
