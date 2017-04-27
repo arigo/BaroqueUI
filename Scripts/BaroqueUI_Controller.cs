@@ -18,8 +18,6 @@ namespace BaroqueUI
     {
         public BaroqueUI_Controller controller;
         internal uint _buttons;
-        public Vector3 position;
-        public Quaternion rotation;
         public Vector2? touchpadPosition;   /* null if not touching the touchpad */
 
         public bool GetButton(EControllerButton btn)
@@ -242,8 +240,6 @@ namespace BaroqueUI
                 CallButtonsUps(button_org);
 
                 UpdatingVelocityEstimates();
-                snapshot.position = transform.position;
-                snapshot.rotation = transform.rotation;
 
                 if (touch != 0)
                     snapshot.touchpadPosition = new Vector2(controllerState.rAxis0.x, controllerState.rAxis0.y);
@@ -432,8 +428,8 @@ namespace BaroqueUI
         {
             Array.Copy(damped, 1, damped, 0, DAMP_VELOCITY);
             damped[DAMP_VELOCITY].time = Time.time;
-            damped[DAMP_VELOCITY].position = snapshot.position;
-            damped[DAMP_VELOCITY].rotation = snapshot.rotation;
+            damped[DAMP_VELOCITY].position = transform.position;
+            damped[DAMP_VELOCITY].rotation = transform.rotation;
         }
 
         Vector3 GetVelocity()

@@ -128,8 +128,8 @@ namespace BaroqueUI
             /* Called when the button is pressed.  'snapshot' contains a snapshot of the controller position, which buttons 
                 * are down, and the touchpad position.  Note that 'ControllerSnapshot' is a 'struct', not a 'class'.
                 */
-            origin_rotation = Quaternion.Inverse(snapshot.rotation) * transform.rotation;
-            origin_position = Quaternion.Inverse(transform.rotation) * (transform.position - snapshot.position);
+            origin_rotation = Quaternion.Inverse(action.transform.rotation) * transform.rotation;
+            origin_position = Quaternion.Inverse(transform.rotation) * (transform.position - action.transform.position);
 
             /* We also change the color to dragColor. */
             ChangeColor(dragColor);
@@ -148,8 +148,8 @@ namespace BaroqueUI
         void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
         {
             /* Dragging... */
-            transform.rotation = snapshot.rotation * origin_rotation;
-            transform.position = snapshot.position + transform.rotation * origin_position;
+            transform.rotation = action.transform.rotation * origin_rotation;
+            transform.position = action.transform.position + transform.rotation * origin_position;
         }
 
         void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
