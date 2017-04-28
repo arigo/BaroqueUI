@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 using Valve.VR;
 
@@ -22,6 +24,7 @@ namespace BaroqueUI
         Transform invalid_reticle, destination_reticle;
         Vector3 destination_position;
 
+#if UNITY_EDITOR
         T _LoadLibAsset<T>(string relpath) where T: UnityEngine.Object
         {
             T result = AssetDatabase.LoadAssetAtPath<T>("Assets/" + relpath);
@@ -44,6 +47,7 @@ namespace BaroqueUI
             invalidReticlePrefab = go == null ? null : go.transform.Find("InvalidReticle");
             destinationReticlePrefab = go == null ? null : go.transform.Find("DestinationReticle");
         }
+#endif
 
         void Start()
         {
