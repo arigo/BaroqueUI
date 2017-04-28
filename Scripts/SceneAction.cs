@@ -13,7 +13,7 @@ namespace BaroqueUI
     {
         public SceneAction sceneAction;
         public FindHoverMethod findHoverMethod;
-        //public float sizeEstimate;
+        public float sizeEstimate;
     }
 
 
@@ -23,14 +23,16 @@ namespace BaroqueUI
         public string actionName;
         public bool alsoForHovering;
         public LayerMask layerMask;
-        public QueryTriggerInteraction collideWithTriggersToo;
 
-        void Reset()
+        //public QueryTriggerInteraction collideWithTriggersToo; -- should always be Collide, I guess
+        protected const QueryTriggerInteraction collideWithTriggersToo = QueryTriggerInteraction.Collide;
+
+        protected void Reset()
         {
             actionName = "Default";
             alsoForHovering = true;
             layerMask = ~(1 << LayerMask.NameToLayer("Ignore Raycast"));
-            collideWithTriggersToo = QueryTriggerInteraction.Collide;
+            //collideWithTriggersToo = QueryTriggerInteraction.Collide;
         }
 
         static public List<SceneAction> ActionsByName(string name)
@@ -72,11 +74,11 @@ namespace BaroqueUI
             }
             sd.findHoverMethod = method;
 
-            /*if (sd.sizeEstimate == 0)
+            if (sd.sizeEstimate == 0)
             {
                 Vector3 scale = game_object.transform.lossyScale;
                 sd.sizeEstimate = scale.magnitude;
-            }*/
+            }
         }
 
         static public void Register(string action_name, GameObject game_object, float reversed_priority=0,
@@ -87,7 +89,7 @@ namespace BaroqueUI
             RegisterHover(action_name, game_object, hover.FindHover);
         }
 
-        public void RegisterClick(GameObject game_object, float reversed_priority=0,
+        public void Register(GameObject game_object, float reversed_priority=0,
                                HoverDelegate buttonEnter = null, HoverDelegate buttonOver = null, HoverDelegate buttonLeave = null,
                                HoverDelegate buttonDown = null, HoverDelegate buttonDrag = null, HoverDelegate buttonUp = null)
         {
@@ -230,12 +232,14 @@ namespace BaroqueUI
                 return null;
 
             Hover best_hover = null;
+            float best_size_estimate = float.PositiveInfinity;
+
             foreach (var sd in FindDelegateOrder())
             {
                 if (sd.findHoverMethod == null)
                     continue;
                 Hover hover = sd.findHoverMethod(this, snapshot);
-                if (Hover.IsBetterHover(hover, best_hover))
+                if (Hover.IsBetterHover(hover, best_hover, true_if_equal: sd.sizeEstimate < best_size_estimate))
                     best_hover = hover;
             }
             return best_hover;

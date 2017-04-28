@@ -3,6 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Valve.VR;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 
 namespace BaroqueUI
@@ -23,6 +26,11 @@ namespace BaroqueUI
         public bool GetButton(EControllerButton btn)
         {
             return (_buttons & (1U << (int)btn)) != 0;
+        }
+
+        public bool GetAnyButton()   /* check for any button */
+        {
+            return _buttons != 0;
         }
 
         public GameObject ThisControllerObject()
@@ -52,7 +60,7 @@ namespace BaroqueUI
         public Hover() { }
         public Hover(float reversed_priority) { this.reversed_priority = reversed_priority; }
 
-        public static bool IsBetterHover(Hover hov1, Hover hov2)
+        public static bool IsBetterHover(Hover hov1, Hover hov2, bool true_if_equal=false)
         {
             if (hov1 == null)
                 return false;
@@ -61,7 +69,8 @@ namespace BaroqueUI
             else
             {
                 //Debug.LogFormat("IsBetterHover: {0} -- {1}", hov1.reversed_priority, hov2.reversed_priority);
-                return hov2.CompareTo(hov1) > 0;
+                int cmp = hov2.CompareTo(hov1);
+                return (cmp > 0) || (cmp == 0 && true_if_equal);
             }
         }
 
@@ -146,6 +155,10 @@ namespace BaroqueUI
         }
 
         public abstract Hover FindHover(ControllerSnapshot snapshot);
+
+        public virtual void Dragging(Hover hover, ControllerSnapshot snapshot)
+        {
+        }
     }
 
 
@@ -312,7 +325,10 @@ namespace BaroqueUI
                         {
                             HoverAndAction cur = hovers_current[index];
                             if (cur.hover != null)
+                            {
+                                cur.action.Dragging(cur.hover, snapshot);
                                 cur.hover.OnButtonDrag(cur.action, snapshot);
+                            }
                         }
                     }
                 }
@@ -477,6 +493,20 @@ namespace BaroqueUI
                 }
             }
             return -result;
+        }
+
+        static public T _LoadLibAsset<T>(string relpath) where T : UnityEngine.Object
+        {
+#if UNITY_EDITOR
+            T result = AssetDatabase.LoadAssetAtPath<T>("Assets/" + relpath);
+            if (result == null)
+                result = AssetDatabase.LoadAssetAtPath<T>("Assets/Lib/" + relpath);
+            if (result == null)
+                Debug.LogWarning("Cannot locate the asset '" + relpath + "'");
+            return result;
+#else
+            return null;
+#endif
         }
     }
 }
