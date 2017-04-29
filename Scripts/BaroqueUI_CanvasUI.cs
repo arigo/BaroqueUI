@@ -46,6 +46,7 @@ namespace BaroqueUI
                 coll.center = r.center;
             }
             SceneAction.Register(sceneActionName, gameObject, 
+                buttonEnter: OnButtonEnter, buttonOver: OnButtonOver, buttonLeave: OnButtonLeave,
                 buttonDown: OnButtonDown, buttonDrag: OnButtonDrag, buttonUp: OnButtonUp);
         }
 
@@ -88,7 +89,7 @@ namespace BaroqueUI
                 pevent = new PointerEventData(EventSystem.current);
             }
 
-            internal bool UpdateCurrentPoint()
+            internal bool UpdateCurrentPoint(bool allow_out_of_bounds = false)
             {
                 controllerCamera.transform.position = action.transform.position;
                 controllerCamera.transform.rotation = action.transform.rotation;
@@ -100,7 +101,27 @@ namespace BaroqueUI
 
                 RaycastResult rr;
                 if (!BestRaycastResult(results, out rr))
+                {
+                    if (allow_out_of_bounds)
+                    {
+                        /* return a "raycast" result that simply projects on the canvas plane Z=0 */
+                        Plane plane = new Plane(raycaster.transform.forward, raycaster.transform.position);
+                        Ray ray = new Ray(action.transform.position, action.transform.forward);
+                        float enter;
+                        if (plane.Raycast(ray, out enter))
+                        {
+                            pevent.pointerCurrentRaycast = new RaycastResult
+                            {
+                                depth = -1,
+                                distance = enter,
+                                worldNormal = raycaster.transform.forward,
+                                worldPosition = ray.GetPoint(enter),
+                            };
+                            return true;
+                        }
+                    }
                     return false;
+                }
                 pevent.pointerCurrentRaycast = rr;
                 return rr.gameObject != null;
             }
@@ -108,18 +129,74 @@ namespace BaroqueUI
 
         ActionTracker GetTracker(ControllerAction action)
         {
-            ActionTracker tracker;
-            if (!current_actions.TryGetValue(action, out tracker))
-            {
-                tracker = new ActionTracker(action, this);
-                current_actions[action] = tracker;
-            }
+            return current_actions[action];
+        }
+
+        ActionTracker AddTracker(ControllerAction action)
+        {
+            ActionTracker tracker = new ActionTracker(action, this);
+            current_actions[action] = tracker;
             return tracker;
         }
 
         void RemoveTracker(ControllerAction action)
         {
             current_actions.Remove(action);
+        }
+
+        private void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ActionTracker tracker = AddTracker(action);
+        }
+
+        private void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ActionTracker tracker = GetTracker(action);
+
+            // handle enter and exit events (highlight)
+            GameObject new_target = null;
+            if (tracker.UpdateCurrentPoint())
+                new_target = tracker.pevent.pointerCurrentRaycast.gameObject;
+
+            UpdateHoveringTarget(tracker, new_target);
+        }
+
+        void UpdateHoveringTarget(ActionTracker tracker, GameObject new_target)
+        {
+            if (new_target == tracker.pevent.pointerEnter)
+                return;    /* already up-to-date */
+
+            /* pop off any hovered objects from the stack, as long as they are not parents of 'new_target' */
+            while (tracker.pevent.hovered.Count > 0)
+            {
+                GameObject h = tracker.pevent.hovered[tracker.pevent.hovered.Count - 1];
+                if (new_target != null && new_target.transform.IsChildOf(h.transform))
+                    break;
+                tracker.pevent.hovered.RemoveAt(tracker.pevent.hovered.Count - 1);
+                ExecuteEvents.Execute(h, tracker.pevent, ExecuteEvents.pointerExitHandler);
+            }
+
+            /* enter and push any new object going to 'new_target', in order from outside to inside */
+            tracker.pevent.pointerEnter = new_target;
+            if (new_target != null)
+                EnterAndPush(tracker.pevent, new_target.transform, tracker.pevent.hovered.Count == 0 ? transform :
+                              tracker.pevent.hovered[tracker.pevent.hovered.Count - 1].transform);
+        }
+
+        static void EnterAndPush(PointerEventData pevent, Transform new_target_transform, Transform limit)
+        {
+            if (new_target_transform != limit)
+            {
+                EnterAndPush(pevent, new_target_transform.parent, limit);
+                ExecuteEvents.Execute(new_target_transform.gameObject, pevent, ExecuteEvents.pointerEnterHandler);
+                pevent.hovered.Add(new_target_transform.gameObject);
+            }
+        }
+
+        private void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            UpdateHoveringTarget(GetTracker(action), null);
+            RemoveTracker(action);
         }
 
         private void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
@@ -159,7 +236,7 @@ namespace BaroqueUI
         private void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
         {
             ActionTracker tracker = GetTracker(action);
-            if (tracker.current_pressed != null && tracker.UpdateCurrentPoint())
+            if (tracker.current_pressed != null && tracker.UpdateCurrentPoint(allow_out_of_bounds: true))
             {
                 ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.dragHandler);
             }
@@ -178,8 +255,9 @@ namespace BaroqueUI
                     ExecuteEvents.ExecuteHierarchy(tracker.current_pressed, tracker.pevent, ExecuteEvents.dropHandler);
                 }
                 ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.pointerUpHandler);
+
+                tracker.current_pressed = null;
             }
-            RemoveTracker(action);
         }
     }
 }
