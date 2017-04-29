@@ -19,8 +19,8 @@ namespace BaroqueUI
             actionName = "Raycast";
             maxDistance = 12f;
             raycastMaterial = BaroqueUI_Controller._LoadLibAsset<Material>(
-                "SteamVR/InteractionSystem/Teleport/Materials/TeleportPointer.mat");
-            rayColorHit = new Color(0, 1, 1);
+                "BaroqueUI/Materials/PointerMaterial.mat");
+            rayColorHit = new Color(0, 0.83f, 0.83f);
             rayColorActive = new Color(0, 1, 1);
             rayColorMiss = new Color(0.84f, 0, 0.63f);
         }
