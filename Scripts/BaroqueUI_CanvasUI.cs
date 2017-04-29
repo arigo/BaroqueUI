@@ -52,8 +52,14 @@ namespace BaroqueUI
 
         static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
         {
+            if (rr1.sortingLayer != rr2.sortingLayer)
+                return SortingLayer.GetLayerValueFromID(rr1.sortingLayer) > SortingLayer.GetLayerValueFromID(rr2.sortingLayer);
+            if (rr1.sortingOrder != rr2.sortingOrder)
+                return rr1.sortingOrder > rr2.sortingOrder;
             if (rr1.depth != rr2.depth)
                 return rr1.depth > rr2.depth;
+            if (rr1.distance != rr2.distance)
+                return rr1.distance < rr2.distance;
             return rr1.index < rr2.index;
         }
 
@@ -78,14 +84,14 @@ namespace BaroqueUI
         class ActionTracker
         {
             internal ControllerAction action;
-            internal GraphicRaycaster raycaster;
+            internal Transform base_graphic;
             internal PointerEventData pevent;
             internal GameObject current_pressed;
 
             internal ActionTracker(ControllerAction action, BaroqueUI_CanvasUI canvasui)
             {
                 this.action = action;
-                raycaster = canvasui.GetComponent<GraphicRaycaster>();
+                base_graphic = canvasui.transform;
                 pevent = new PointerEventData(EventSystem.current);
             }
 
@@ -97,7 +103,8 @@ namespace BaroqueUI
                 pevent.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
 
                 List<RaycastResult> results = new List<RaycastResult>();
-                raycaster.Raycast(pevent, results);
+                foreach (var raycaster in base_graphic.GetComponentsInChildren<GraphicRaycaster>())
+                    raycaster.Raycast(pevent, results);
 
                 RaycastResult rr;
                 if (!BestRaycastResult(results, out rr))
@@ -105,7 +112,7 @@ namespace BaroqueUI
                     if (allow_out_of_bounds)
                     {
                         /* return a "raycast" result that simply projects on the canvas plane Z=0 */
-                        Plane plane = new Plane(raycaster.transform.forward, raycaster.transform.position);
+                        Plane plane = new Plane(base_graphic.transform.forward, base_graphic.transform.position);
                         Ray ray = new Ray(action.transform.position, action.transform.forward);
                         float enter;
                         if (plane.Raycast(ray, out enter))
@@ -114,7 +121,7 @@ namespace BaroqueUI
                             {
                                 depth = -1,
                                 distance = enter,
-                                worldNormal = raycaster.transform.forward,
+                                worldNormal = base_graphic.transform.forward,
                                 worldPosition = ray.GetPoint(enter),
                             };
                             return true;
@@ -170,6 +177,11 @@ namespace BaroqueUI
             while (tracker.pevent.hovered.Count > 0)
             {
                 GameObject h = tracker.pevent.hovered[tracker.pevent.hovered.Count - 1];
+                if (!h)
+                {
+                    tracker.pevent.hovered.RemoveAt(tracker.pevent.hovered.Count - 1);
+                    continue;
+                }
                 if (new_target != null && new_target.transform.IsChildOf(h.transform))
                     break;
                 tracker.pevent.hovered.RemoveAt(tracker.pevent.hovered.Count - 1);
