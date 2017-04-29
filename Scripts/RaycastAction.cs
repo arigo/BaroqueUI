@@ -30,6 +30,16 @@ namespace BaroqueUI
 
         public RaycastHit currentHitInfo;
 
+        public override Vector3 GetPosition()
+        {
+            return currentHitInfo.point;
+        }
+
+        public override bool HasHoverVisualEffect()
+        {
+            return true;
+        }
+
         RaycastHit[] IssueRaycast()
         {
             return Physics.RaycastAll(transform.position, transform.forward, maxDistance, layerMask,
@@ -46,47 +56,42 @@ namespace BaroqueUI
 
             RaycastHit[] hit_infos = IssueRaycast();
 
-            /* First, we trim the ray at the closest non-trigger collider it hits. */
-            float limit_distance = float.PositiveInfinity;
-            foreach (var hit_info in hit_infos)
-            {
-                if (!hit_info.collider.isTrigger)
-                    limit_distance = Mathf.Min(limit_distance, hit_info.distance);
-            }
-            /* From now on we only consider hits up to 'max_distance'. */
+            /* Sort the hits by distance */
+            Array.Sort<RaycastHit>(hit_infos, (x, y) => x.distance.CompareTo(y.distance));
 
-            /* Find the highest-priority hover and remember the corresponding distance. */
-            Hover best_hover = null;
-            float best_hover_distance = 0;
-
-            foreach (var hit_info in hit_infos)
+            /* Find and return the first non-null hover */
+            foreach (var hit_info in hit_infos)      /* distance order */
             {
-                float distance = hit_info.distance;
-                if (distance > limit_distance)
-                    continue;
+                Hover best_hover = null;
+                float best_size_estimate = float.PositiveInfinity;
+
+                currentHitInfo = hit_info;
                 foreach (var rd in hit_info.transform.GetComponentsInParent<SceneDelegate>())
                 {
                     if (rd.sceneAction == this && rd.findHoverMethod != null)
                     {
-                        currentHitInfo = hit_info;
                         Hover hover = rd.findHoverMethod(this, snapshot);
-                        if (Hover.IsBetterHover(hover, best_hover, true_if_equal: distance < best_hover_distance))
+                        if (Hover.IsBetterHover(hover, best_hover, true_if_equal: rd.sizeEstimate < best_size_estimate))
                         {
                             best_hover = hover;
-                            best_hover_distance = distance;
+                            best_size_estimate = rd.sizeEstimate;
                         }
                     }
                 }
+                if (best_hover != null)
+                {
+                    DrawLine(rayColorHit, rayColorHit, currentHitInfo.distance);
+                    return best_hover;
+                }
+                /* stop looking after hitting a non-trigger collider */
+                if (!hit_info.collider.isTrigger)
+                {
+                    DrawLine(rayColorMiss, rayColorMiss, hit_info.distance);
+                    return null;
+                }
             }
-            currentHitInfo.distance = best_hover_distance;
-            if (best_hover != null)
-                DrawLine(rayColorHit, rayColorHit, best_hover_distance);
-            else if (limit_distance <= maxDistance)
-                DrawLine(rayColorMiss, rayColorMiss, limit_distance);
-            else
-                DrawLine(rayColorMiss, Color.clear, maxDistance);
-
-            return best_hover;
+            DrawLine(rayColorMiss, Color.clear, maxDistance);
+            return null;
         }
 
         public override void Dragging(Hover hover, ControllerSnapshot snapshot)

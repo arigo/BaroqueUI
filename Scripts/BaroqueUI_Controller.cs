@@ -101,7 +101,8 @@ namespace BaroqueUI
 
         public Hover FindHover(ControllerAction action, ControllerSnapshot snapshot)
         {
-            if (action.IsPressingButton(snapshot) || buttonEnter != null || buttonOver != null || buttonLeave != null)
+            if (action.IsPressingButton(snapshot) || buttonEnter != null || buttonOver != null || buttonLeave != null
+                    || action.HasHoverVisualEffect())
                 return this;
             return null;
         }
@@ -158,6 +159,16 @@ namespace BaroqueUI
 
         public virtual void Dragging(Hover hover, ControllerSnapshot snapshot)
         {
+        }
+
+        public virtual Vector3 GetPosition()
+        {
+            return transform.position;
+        }
+
+        public virtual bool HasHoverVisualEffect()
+        {
+            return false;
         }
     }
 

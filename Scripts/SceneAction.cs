@@ -240,7 +240,10 @@ namespace BaroqueUI
                     continue;
                 Hover hover = sd.findHoverMethod(this, snapshot);
                 if (Hover.IsBetterHover(hover, best_hover, true_if_equal: sd.sizeEstimate < best_size_estimate))
+                {
                     best_hover = hover;
+                    best_size_estimate = sd.sizeEstimate;
+                }
             }
             return best_hover;
         }
