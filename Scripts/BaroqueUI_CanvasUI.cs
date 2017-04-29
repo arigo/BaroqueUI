@@ -18,6 +18,8 @@ namespace BaroqueUI
          */
         static Camera controllerCamera;
 
+        Dictionary<ControllerAction, ActionTracker> current_actions;
+
         private void Start()
         {
             if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
@@ -30,6 +32,8 @@ namespace BaroqueUI
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
                 canvas.worldCamera = controllerCamera;
 
+            current_actions = new Dictionary<ControllerAction, ActionTracker>();
+
             if (GetComponentInChildren<Collider>() == null)
             {
                 RectTransform rtr = transform as RectTransform;
@@ -41,7 +45,8 @@ namespace BaroqueUI
                                                                     that have a Z coordinate that differs a lot from 0 */
                 coll.center = r.center;
             }
-            SceneAction.Register(sceneActionName, gameObject, buttonDown: OnButtonDown);
+            SceneAction.Register(sceneActionName, gameObject, 
+                buttonDown: OnButtonDown, buttonDrag: OnButtonDrag, buttonUp: OnButtonUp);
         }
 
         static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
@@ -69,22 +74,112 @@ namespace BaroqueUI
             return found_any;
         }
 
+        class ActionTracker
+        {
+            internal ControllerAction action;
+            internal GraphicRaycaster raycaster;
+            internal PointerEventData pevent;
+            internal GameObject current_pressed;
+
+            internal ActionTracker(ControllerAction action, BaroqueUI_CanvasUI canvasui)
+            {
+                this.action = action;
+                raycaster = canvasui.GetComponent<GraphicRaycaster>();
+                pevent = new PointerEventData(EventSystem.current);
+            }
+
+            internal bool UpdateCurrentPoint()
+            {
+                controllerCamera.transform.position = action.transform.position;
+                controllerCamera.transform.rotation = action.transform.rotation;
+
+                pevent.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
+
+                List<RaycastResult> results = new List<RaycastResult>();
+                raycaster.Raycast(pevent, results);
+
+                RaycastResult rr;
+                if (!BestRaycastResult(results, out rr))
+                    return false;
+                pevent.pointerCurrentRaycast = rr;
+                return rr.gameObject != null;
+            }
+        }
+
+        ActionTracker GetTracker(ControllerAction action)
+        {
+            ActionTracker tracker;
+            if (!current_actions.TryGetValue(action, out tracker))
+            {
+                tracker = new ActionTracker(action, this);
+                current_actions[action] = tracker;
+            }
+            return tracker;
+        }
+
+        void RemoveTracker(ControllerAction action)
+        {
+            current_actions.Remove(action);
+        }
+
         private void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
         {
-            controllerCamera.transform.position = action.transform.position;
-            controllerCamera.transform.rotation = action.transform.rotation;
-
-            PointerEventData pointerData = new PointerEventData(EventSystem.current);
-            pointerData.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
-
-            List<RaycastResult> results = new List<RaycastResult>();
-            GetComponent<GraphicRaycaster>().Raycast(pointerData, results);
-
-            RaycastResult rr;
-            if (BestRaycastResult(results, out rr))
+            ActionTracker tracker = GetTracker(action);
+            if (tracker.UpdateCurrentPoint())
             {
-                Debug.Log(rr.gameObject);
+                PointerEventData pevent = tracker.pevent;
+                pevent.pressPosition = pevent.position;
+                pevent.pointerPressRaycast = pevent.pointerCurrentRaycast;
+                pevent.pointerPress = null;
+
+                GameObject target = pevent.pointerPressRaycast.gameObject;
+                tracker.current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerDownHandler);
+                
+                if (tracker.current_pressed == null)
+                {
+                    // some UI elements might only have click handler and not pointer down handler
+                    tracker.current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerClickHandler);
+                }
+                else
+                {
+                    // we want to do click on button down at same time, unlike regular mouse processing
+                    // which does click when mouse goes up over same object it went down on
+                    // reason to do this is head tracking might be jittery and this makes it easier to click buttons
+                    ExecuteEvents.Execute(tracker.current_pressed, pevent, ExecuteEvents.pointerClickHandler);
+                }
+
+                if (tracker.current_pressed != null)
+                {
+                    ExecuteEvents.Execute(tracker.current_pressed, pevent, ExecuteEvents.beginDragHandler);
+                    pevent.pointerDrag = tracker.current_pressed;
+                }
             }
+        }
+
+        private void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ActionTracker tracker = GetTracker(action);
+            if (tracker.current_pressed != null && tracker.UpdateCurrentPoint())
+            {
+                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.dragHandler);
+            }
+        }
+
+        private void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ActionTracker tracker = GetTracker(action);
+            if (tracker.current_pressed != null)
+            {
+                bool in_bounds = tracker.UpdateCurrentPoint();
+
+                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.endDragHandler);
+                if (in_bounds)
+                {
+                    ExecuteEvents.ExecuteHierarchy(tracker.current_pressed, tracker.pevent, ExecuteEvents.dropHandler);
+                }
+                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.pointerUpHandler);
+            }
+            RemoveTracker(action);
         }
     }
 }
