@@ -13,13 +13,12 @@ namespace BaroqueUI
         public Material raycastMaterial;
         public Color rayColorHit, rayColorActive, rayColorMiss;
 
-        protected new void Reset()
+        public new void Reset()
         {
             base.Reset();
             actionName = "Raycast";
             maxDistance = 12f;
-            raycastMaterial = BaroqueUI_Controller._LoadLibAsset<Material>(
-                "BaroqueUI/Materials/PointerMaterial.mat");
+            raycastMaterial = Resources.Load<Material>("BaroqueUI/PointerMaterial");
             rayColorHit = new Color(0, 0.83f, 0.83f);
             rayColorActive = new Color(0, 1, 1);
             rayColorMiss = new Color(0.84f, 0, 0.63f);
@@ -59,6 +58,9 @@ namespace BaroqueUI
             /* Sort the hits by distance */
             Array.Sort<RaycastHit>(hit_infos, (x, y) => x.distance.CompareTo(y.distance));
 
+            Color end_color = Color.clear;
+            float end_distance = maxDistance;
+
             /* Find and return the first non-null hover */
             foreach (var hit_info in hit_infos)      /* distance order */
             {
@@ -86,17 +88,26 @@ namespace BaroqueUI
                 /* stop looking after hitting a non-trigger collider */
                 if (!hit_info.collider.isTrigger)
                 {
-                    DrawLine(rayColorMiss, rayColorMiss, hit_info.distance);
-                    return null;
+                    end_color = rayColorMiss;
+                    end_distance = hit_info.distance;
+                    break;
                 }
             }
-            DrawLine(rayColorMiss, Color.clear, maxDistance);
+            DrawLine(rayColorMiss, end_color, end_distance);
             return null;
         }
 
         public override void Dragging(Hover hover, ControllerSnapshot snapshot)
         {
-            DrawLine(rayColorActive, rayColorActive, currentHitInfo.distance);
+            if (!this || !isActiveAndEnabled)
+            {
+                RemoveLine();
+                return;
+            }
+            if (hover == null)
+                FindHover(snapshot);   /* continue to look for a hover, even though we can't do anything with it until dragging ends */
+            else
+                DrawLine(rayColorActive, rayColorActive, currentHitInfo.distance);
         }
 
         const float thickness = 0.004f, thickness_arrow = 0.04f, arrow_fraction = 0.1f;
@@ -106,8 +117,12 @@ namespace BaroqueUI
         {
             RemoveLine();
         }
+        private void OnDestroy()
+        {
+            RemoveLine();
+        }
 
-        void RemoveLine()
+        protected void RemoveLine()
         {
             if (line_renderer != null)
             {
@@ -131,14 +146,7 @@ namespace BaroqueUI
                 line_renderer.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
                 line_renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 line_renderer.material = raycastMaterial;
-/*
-#if UNITY_5_4
-                line_renderer.SetWidth( thickness, thickness );
-#else
-                line_renderer.startWidth = thickness;
-                line_renderer.endWidth = thickness_end;
-#endif
-*/
+
                 AnimationCurve curve = new AnimationCurve();
                 curve.AddKey(0, thickness);
                 curve.AddKey(1 - arrow_fraction, thickness);
@@ -146,18 +154,26 @@ namespace BaroqueUI
                 curve.AddKey(1, thickness);
                 line_renderer.widthCurve = curve;
                 line_renderer.widthMultiplier = 1;
-                line_renderer.numPositions = 4;
             }
             Vector3 end_point = transform.position + transform.forward * distance;
+            if (color_end == Color.clear)
+            {
+                line_renderer.numPositions = 2;
+                line_renderer.SetPosition(1, end_point);
+            }
+            else
+            {
+                line_renderer.numPositions = 4;
+                line_renderer.SetPosition(3, end_point);
+                line_renderer.SetPosition(2, Vector3.Lerp(transform.position, end_point, 1 - 0.8f * arrow_fraction));
+                line_renderer.SetPosition(1, Vector3.Lerp(transform.position, end_point, 1 - arrow_fraction));
+            }
             line_renderer.SetPosition(0, transform.position);
-            line_renderer.SetPosition(1, Vector3.Lerp(transform.position, end_point, 1 - arrow_fraction));
-            line_renderer.SetPosition(2, Vector3.Lerp(transform.position, end_point, 1 - 0.8f * arrow_fraction));
-            line_renderer.SetPosition(3, end_point);
 #if UNITY_5_4
-            line_renderer.SetColors( color_start, color_end );
+            line_renderer.SetColors( color_start, color_start );
 #else
-            line_renderer.startColor = color_start;
-            line_renderer.endColor = color_end;
+            line_renderer.startColor = line_renderer.endColor = color_start;
+            //line_renderer.endColor = color_end;
 #endif
         }
     }

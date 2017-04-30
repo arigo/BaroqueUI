@@ -27,7 +27,7 @@ namespace BaroqueUI
         //public QueryTriggerInteraction collideWithTriggersToo; -- should always be Collide, I guess
         protected const QueryTriggerInteraction collideWithTriggersToo = QueryTriggerInteraction.Collide;
 
-        protected void Reset()
+        public void Reset()
         {
             actionName = "Default";
             alsoForHovering = true;
@@ -39,7 +39,7 @@ namespace BaroqueUI
         {
             var result = new List<SceneAction>();
             var mgr = BaroqueUI_Controller.FindSteamVRControllerManager();
-            foreach (var sa in mgr.GetComponentsInChildren<SceneAction>(/*includeInactive=*/true))
+            foreach (var sa in mgr.GetComponentsInChildren<SceneAction>(includeInactive: true))
                 if (sa.actionName == name)
                     result.Add(sa);
             return result;
@@ -246,6 +246,11 @@ namespace BaroqueUI
                 }
             }
             return best_hover;
+        }
+
+        internal static void Register(string sceneActionName, GameObject gameObject, object buttonDown)
+        {
+            throw new NotImplementedException();
         }
     }
 }

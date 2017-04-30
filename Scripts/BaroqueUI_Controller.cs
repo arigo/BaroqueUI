@@ -382,14 +382,20 @@ namespace BaroqueUI
 
         static public BaroqueUI_Controller BuildFromObjectInside(GameObject gobj)
         {
-            var ctrl = gobj.GetComponentInParent<BaroqueUI_Controller>();
-            if (ctrl != null)
-                return ctrl;
+            /* can't use GetComponentInParent() because it won't find anything on disabled gameobjects */
+            Transform tr = gobj.transform;
+            while (tr != null)
+            {
+                var ctrl = tr.GetComponent<BaroqueUI_Controller>();
+                if (ctrl != null)
+                    return ctrl;
 
-            var tobj = gobj.GetComponentInParent<SteamVR_TrackedObject>();
-            if (tobj != null)
-                return tobj.gameObject.AddComponent<BaroqueUI_Controller>();
+                var tobj = tr.GetComponent<SteamVR_TrackedObject>();
+                if (tobj != null)
+                    return tr.gameObject.AddComponent<BaroqueUI_Controller>();
 
+                tr = tr.parent;
+            }
             throw new MissingComponentException("'SteamVR_TrackedObject' not found in any parent object of '" + gobj.name + "'.  " +
                                                 "You must put this component inside a subobject of 'Controller (left)' or " +
                                                 "'Controller (right) in SteamVR's '[CameraRig]'.");
@@ -435,6 +441,13 @@ namespace BaroqueUI
                 throw new MissingComponentException("'SteamVR_Camera' not found anywhere inside the SteamVR_ControllerManager");
 
             return head;
+        }
+
+        static public BaroqueUI_Controller[] GetAllControllers()
+        {
+            SteamVR_ControllerManager mgr = FindSteamVRControllerManager();
+            return new BaroqueUI_Controller[] { BuildFromObjectInside(mgr.left),
+                                                BuildFromObjectInside(mgr.right) };
         }
 
         /*****************************************************************************************/
@@ -504,20 +517,6 @@ namespace BaroqueUI
                 }
             }
             return -result;
-        }
-
-        static public T _LoadLibAsset<T>(string relpath) where T : UnityEngine.Object
-        {
-#if UNITY_EDITOR
-            T result = AssetDatabase.LoadAssetAtPath<T>("Assets/" + relpath);
-            if (result == null)
-                result = AssetDatabase.LoadAssetAtPath<T>("Assets/Lib/" + relpath);
-            if (result == null)
-                Debug.LogWarning("Cannot locate the asset '" + relpath + "'");
-            return result;
-#else
-            return null;
-#endif
         }
     }
 }

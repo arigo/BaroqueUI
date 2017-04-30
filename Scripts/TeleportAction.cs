@@ -10,10 +10,9 @@ namespace BaroqueUI
     public class TeleportAction : ControllerAction
     {
         [Header("Teleport beam parameters")]
-        public float beamVelocity = 10f;
+        public float beamVelocity;
         public LayerMask traceLayerMask;
-        public Color validArcColor = new Color(0.0f, 0.8f, 1.0f, 0.7f);
-        public Color invalidArcColor = new Color(0.8f, 0f, 0.3f, 0.7f);
+        public Color validArcColor, invalidArcColor;
         public Material teleportMaterial;
         public Transform invalidReticlePrefab, destinationReticlePrefab;
 
@@ -21,15 +20,17 @@ namespace BaroqueUI
         Transform invalid_reticle, destination_reticle;
         Vector3 destination_position;
 
-        void Reset()
+        public void Reset()
         {
+            beamVelocity = 10f;
             controllerButton = EControllerButton.Touchpad;
             traceLayerMask = 1 << LayerMask.NameToLayer("Default");
-            teleportMaterial = BaroqueUI_Controller._LoadLibAsset<Material>(
-                "SteamVR/InteractionSystem/Teleport/Materials/TeleportPointer.mat");
+            teleportMaterial = Resources.Load<Material>("BaroqueUI/TeleportPointer");
 
-            GameObject go = BaroqueUI_Controller._LoadLibAsset<GameObject>(
-                "SteamVR/InteractionSystem/Teleport/Prefabs/Teleporting.prefab");
+            validArcColor = new Color(0.0f, 0.8f, 1.0f, 0.7f);
+            invalidArcColor = new Color(0.8f, 0f, 0.3f, 0.7f);
+
+            GameObject go = Resources.Load<GameObject>("BaroqueUI/Teleporting");
             invalidReticlePrefab = go == null ? null : go.transform.Find("InvalidReticle");
             destinationReticlePrefab = go == null ? null : go.transform.Find("DestinationReticle");
         }
