@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 using Valve.VR;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -144,6 +145,7 @@ namespace BaroqueUI
     {
         public EControllerButton controllerButton;
         public BaroqueUI_Controller controller { get; private set; }
+        public UnityAction onEnable, onDisable;
 
         void Awake()
         {
@@ -169,6 +171,18 @@ namespace BaroqueUI
         public virtual bool HasHoverVisualEffect()
         {
             return false;
+        }
+
+        protected void OnEnable()
+        {
+            if (onEnable != null)
+                onEnable();
+        }
+
+        protected void OnDisable()
+        {
+            if (onDisable != null)
+                onDisable();
         }
     }
 

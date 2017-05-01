@@ -8,25 +8,29 @@ using System;
 public class MetalScript : MonoBehaviour
 {
     public GameObject selectedPointPrefab;
+    public GameObject selectionCubePrefab;
 
     Mesh mesh;
     Vector3[] vertices;   /* a cache, because reading mesh.vertices is not an O(1) operation */
-    WeakReference[] cache_hover_vertex, cache_hover_line, cache_hover_triangle;
+    int[] triangles;      /* same */
+    WeakReference[] cache_hover_vertex, cache_hover_edge, cache_hover_triangle;
+    Dictionary<ControllerAction, SelectionHover> selection_hovers;
 
     void Start()
     {
         mesh = GetComponent<MeshFilter>().mesh;
         vertices = mesh.vertices;
-        cache_hover_vertex = new WeakReference[mesh.vertices.Length];
-        cache_hover_line = new WeakReference[mesh.triangles.Length];
-        cache_hover_triangle = new WeakReference[mesh.triangles.Length / 3];
+        triangles = mesh.triangles;
+        cache_hover_vertex = new WeakReference[vertices.Length];
+        cache_hover_edge = new WeakReference[triangles.Length];
+        cache_hover_triangle = new WeakReference[triangles.Length / 3];
+        selection_hovers = new Dictionary<ControllerAction, SelectionHover>();
         SceneAction.RegisterHover("Deform", gameObject, FindHover);
         SceneAction.Register("Move", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
                              buttonDown: OnMoveDown, buttonDrag: OnMoveDrag);
         SceneAction.Register("Zoom", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
                              buttonDown: OnZoomDown, buttonDrag: OnZoomDrag);
-        //SceneAction.Register("Select", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
-        //                     buttonDown: OnSelectDown, buttonDrag: OnSelectDrag);
+        SceneAction.RegisterHover("Select", gameObject, FindSelectionHover);
         UpdatedMeshVertices();
     }
 
@@ -47,7 +51,7 @@ public class MetalScript : MonoBehaviour
     /**********  Deform  **********/
 
     const float DISTANCE_VERTEX_MIN   = 0.25f;
-    const float DISTANCE_LINE_MIN     = 0.22f;
+    const float DISTANCE_EDGE_MIN     = 0.22f;
     const float DISTANCE_TRIANGLE_MIN = 0.2f;
 
     private Hover FindHover(ControllerAction action, ControllerSnapshot snapshot)
@@ -55,24 +59,29 @@ public class MetalScript : MonoBehaviour
         Vector3 p = transform.InverseTransformPoint(action.transform.position);
         Hover hover = FindClosestVertex(p);
         if (hover == null)
-            hover = FindClosestLine(p);
+            hover = FindClosestEdge(p);
         if (hover == null)
             hover = FindClosestTriangle(p);
         return hover;
     }
 
+    static public float DistanceToVertex(Vector3 v, Vector3 p)
+    {
+        return (v - p).magnitude;
+    }
+
     Hover FindClosestVertex(Vector3 p)
     {
-        float distance_min_2 = DISTANCE_VERTEX_MIN * DISTANCE_VERTEX_MIN;
+        float distance_min = DISTANCE_VERTEX_MIN;
         int closest = -1;
 
         for (int i = 0; i < vertices.Length; i++)
         {
-            float distance_2 = (vertices[i] - p).sqrMagnitude;
-            if (distance_2 < distance_min_2 * 0.99f)
+            float distance = DistanceToVertex(vertices[i], p);
+            if (distance < distance_min)
             {
                 closest = i;
-                distance_min_2 = distance_2;
+                distance_min = distance * 0.99f;
             }
         }
 
@@ -89,52 +98,65 @@ public class MetalScript : MonoBehaviour
         return hover;
     }
 
-    int LineNext(int i)
+    static public float DistanceToEdge(Vector3 v1, Vector3 v2, Vector3 p)
+    {
+        Vector3 p1 = v1 - v2;
+        Vector3 p2 = p - v1;
+        float dot = Vector3.Dot(p2, p1);
+        if (dot > 0 && dot < p1.sqrMagnitude)
+            return Vector3.ProjectOnPlane(p2, planeNormal: p1).magnitude;
+        else
+            return float.PositiveInfinity;
+    }
+
+    public int LineNext(int i)
     {
         return (i % 3) == 2 ? i - 2 : i + 1;
     }
 
-    Hover FindClosestLine(Vector3 p)
+    Hover FindClosestEdge(Vector3 p)
     {
-        int[] triangles = mesh.triangles;
-        float distance_min_2 = DISTANCE_LINE_MIN * DISTANCE_LINE_MIN;
+        float distance_min = DISTANCE_EDGE_MIN;
         int closest = -1;
 
         for (int i = 0; i < triangles.Length; i++)
         {
             int t1 = triangles[i];
             int t2 = triangles[LineNext(i)];
-            Vector3 p1 = vertices[t2] - vertices[t1];
-            Vector3 p2 = p - vertices[t1];
-            float dot = Vector3.Dot(p2, p1);
-            if (dot > 0 && dot < p1.sqrMagnitude)
+            float distance = DistanceToEdge(vertices[t1], vertices[t2], p);
+            if (distance < distance_min)
             {
-                float distance_2 = Vector3.ProjectOnPlane(p2, planeNormal: p1).sqrMagnitude;
-                if (distance_2 < distance_min_2 * 0.99f)
-                {
-                    closest = i;
-                    distance_min_2 = distance_2;
-                }
+                closest = i;
+                distance_min = distance * 0.99f;
             }
         }
 
         if (closest < 0)
             return null;
 
-        WeakReference wr = cache_hover_line[closest];
+        WeakReference wr = cache_hover_edge[closest];
         Hover hover = wr == null ? null : wr.Target as Hover;
         if (hover == null)
         {
             hover = new MeshVerticesHover(this, new int[] {
                 triangles[closest], triangles[LineNext(closest)] });
-            cache_hover_line[closest] = new WeakReference(hover);
+            cache_hover_edge[closest] = new WeakReference(hover);
         }
         return hover;
     }
 
+    static public float DistanceToTriangle(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p)
+    {
+        if (Vector3.Dot(Vector3.ProjectOnPlane(p1 - p0, planeNormal: p2 - p0), p - p0) > 0 &&
+            Vector3.Dot(Vector3.ProjectOnPlane(p2 - p1, planeNormal: p0 - p1), p - p1) > 0 &&
+            Vector3.Dot(Vector3.ProjectOnPlane(p0 - p2, planeNormal: p1 - p2), p - p2) > 0)
+            return Mathf.Abs(Vector3.Dot(Vector3.Cross(p2 - p0, p1 - p0).normalized, p - p0));
+        else
+            return float.PositiveInfinity;
+    }
+
     Hover FindClosestTriangle(Vector3 p)
     {
-        int[] triangles = mesh.triangles;
         float distance_min = DISTANCE_TRIANGLE_MIN;
         int closest = -1;
 
@@ -143,20 +165,11 @@ public class MetalScript : MonoBehaviour
             int t0 = triangles[i + 0];
             int t1 = triangles[i + 1];
             int t2 = triangles[i + 2];
-            Vector3 p0 = vertices[t0];
-            Vector3 p1 = vertices[t1];
-            Vector3 p2 = vertices[t2];
-
-            if (Vector3.Dot(Vector3.ProjectOnPlane(p1 - p0, planeNormal: p2 - p0), p - p0) > 0 &&
-                Vector3.Dot(Vector3.ProjectOnPlane(p2 - p1, planeNormal: p0 - p1), p - p1) > 0 &&
-                Vector3.Dot(Vector3.ProjectOnPlane(p0 - p2, planeNormal: p1 - p2), p - p2) > 0)
+            float distance = DistanceToTriangle(vertices[t0], vertices[t1], vertices[t2], p);
+            if (distance < distance_min)
             {
-                float distance = Mathf.Abs(Vector3.Dot(Vector3.Cross(p2 - p0, p1 - p0).normalized, p - p0));
-                if (distance < distance_min * 0.99f)
-                {
-                    closest = i;
-                    distance_min = distance;
-                }
+                closest = i;
+                distance_min = distance * 0.99f;
             }
         }
 
@@ -178,7 +191,8 @@ public class MetalScript : MonoBehaviour
     class MeshVerticesHover : Hover
     {
         MetalScript ms;
-        int[] vertices_index;
+        public int[] vertices_index;
+        HashSet<int> vertices_set;
         GameObject[] selected_points;
         Material[] origin_materials;
         Vector3 prev_position;
@@ -187,6 +201,7 @@ public class MetalScript : MonoBehaviour
         {
             this.ms = ms;
             this.vertices_index = vertices_index;
+            vertices_set = new HashSet<int>(vertices_index);
             selected_points = new GameObject[vertices_index.Length];
             origin_materials = new Material[vertices_index.Length];
         }
@@ -196,8 +211,44 @@ public class MetalScript : MonoBehaviour
             return ms.transform.TransformPoint(ms.vertices[vertices_index[i]]);
         }
 
+        public bool IsCloseFromSelectedVertices(Vector3 p)
+        {
+            for (int i = 0; i < vertices_index.Length; i++)
+                if (MetalScript.DistanceToVertex(ms.vertices[vertices_index[i]], p) < MetalScript.DISTANCE_VERTEX_MIN)
+                    return true;
+
+            for (int i = 0; i < ms.triangles.Length; i++)
+            {
+                if (vertices_set.Contains(ms.triangles[i]) &&
+                    vertices_set.Contains(ms.triangles[ms.LineNext(i)]) &&
+                    MetalScript.DistanceToEdge(ms.vertices[ms.triangles[i]],
+                                               ms.vertices[ms.triangles[ms.LineNext(i)]],
+                                               p) < MetalScript.DISTANCE_EDGE_MIN)
+                    return true;
+            }
+
+            for (int i = 0; i < ms.triangles.Length; i += 3)
+            {
+                if (vertices_set.Contains(ms.triangles[i + 0]) &&
+                    vertices_set.Contains(ms.triangles[i + 1]) &&
+                    vertices_set.Contains(ms.triangles[i + 2]) &&
+                    MetalScript.DistanceToTriangle(ms.vertices[ms.triangles[i + 0]],
+                                                   ms.vertices[ms.triangles[i + 1]],
+                                                   ms.vertices[ms.triangles[i + 2]],
+                                                   p) < MetalScript.DISTANCE_TRIANGLE_MIN)
+                    return true;
+            }
+
+            return false;
+        }
+
         public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
         {
+            action.transform.Find("Trigger Location").gameObject.SetActive(true);
+            Transform tr = action.transform.Find("Indicator");
+            if (tr != null)
+                tr.gameObject.SetActive(false);
+
             for (int i = 0; i < vertices_index.Length; i++)
                 selected_points[i] = Instantiate(ms.selectedPointPrefab);
         }
@@ -304,7 +355,108 @@ public class MetalScript : MonoBehaviour
     }
 
 
-    /**********  Selection box maker  **********/
+    /**********  Selection box  **********/
 
-    /* ... */
+    private Hover FindSelectionHover(ControllerAction action, ControllerSnapshot snapshot)
+    {
+        /* Make and cache one SelectionHover per 'action', i.e. per controller.
+         * The SelectionHover is used for making a selection cube.  Once this is done,
+         * FindHover() below will return a regular MeshVerticesHover as long as we
+         * are close to one of the selected vertices/edges/faces.
+         */
+        if (!selection_hovers.ContainsKey(action))
+            selection_hovers[action] = new SelectionHover(this, action);
+
+        SelectionHover sel_hover = selection_hovers[action];
+        if (sel_hover.selected_vertices_hover != null)
+        {
+            Vector3 p = transform.InverseTransformPoint(action.transform.position);
+            if (sel_hover.selected_vertices_hover.IsCloseFromSelectedVertices(p))
+                return sel_hover.selected_vertices_hover;
+        }
+        return sel_hover;
+    }
+
+    class SelectionHover : Hover
+    {
+        MetalScript ms;
+        ControllerAction action;
+        GameObject selection_cube;
+        public MeshVerticesHover selected_vertices_hover;
+        Vector3 select_origin;
+
+        public SelectionHover(MetalScript ms, ControllerAction action)
+        {
+            this.ms = ms;
+            this.action = action;
+            action.onDisable += RemoveHover;
+        }
+
+        void RemoveHover()
+        {
+            action.onDisable -= RemoveHover;
+            ms.selection_hovers.Remove(action);
+        }
+
+        public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            action.transform.Find("Trigger Location").gameObject.SetActive(false);
+            action.transform.Find("Indicator").gameObject.SetActive(true);
+            ms.OnIndicatorEnter(action, snapshot);
+        }
+
+        public override void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ms.OnIndicatorOver(action, snapshot);
+        }
+
+        public override void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            ms.OnIndicatorLeave(action, snapshot);
+        }
+
+        public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            select_origin = ms.transform.InverseTransformPoint(action.transform.position);
+            selection_cube = Instantiate(ms.selectionCubePrefab, ms.transform);
+            selected_vertices_hover = new MeshVerticesHover(ms, new int[0]);
+            selected_vertices_hover.OnButtonEnter(action, snapshot);
+        }
+
+        public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            Vector3 p = ms.transform.InverseTransformPoint(action.transform.position);
+            Vector3 center = (p + select_origin) * 0.5f;
+            Vector3 diff = p - select_origin;
+            diff.x = Mathf.Abs(diff.x);
+            diff.y = Mathf.Abs(diff.y);
+            diff.z = Mathf.Abs(diff.z);
+
+            selection_cube.transform.localPosition = center;
+            selection_cube.transform.localScale = diff;
+
+            Bounds bounds = new Bounds(center, diff);
+            List<int> lst = new List<int>();
+            for (int i = 0; i < ms.vertices.Length; i++)
+                if (bounds.Contains(ms.vertices[i]))
+                    lst.Add(i);
+
+            int[] vertices_index = lst.ToArray();
+            if (vertices_index != selected_vertices_hover.vertices_index)
+            {
+                selected_vertices_hover.OnButtonLeave(action, snapshot);
+                selected_vertices_hover = new MeshVerticesHover(ms, vertices_index);
+                selected_vertices_hover.OnButtonEnter(action, snapshot);
+            }
+            selected_vertices_hover.OnButtonOver(action, snapshot);
+        }
+
+        public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            selected_vertices_hover.OnButtonLeave(action, snapshot);
+            if (selected_vertices_hover.vertices_index.Length == 0)
+                selected_vertices_hover = null;
+            Destroy(selection_cube);
+        }
+    }
 }
