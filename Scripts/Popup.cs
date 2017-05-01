@@ -25,9 +25,8 @@ namespace BaroqueUI
             transform.forward = forward;
             transform.position = ctr.position + 0.15f * transform.forward;
 
-            EControllerButton button = action.controllerButton;
-            dialog.onEnable = () => dialog.sceneActionName = TempRaycastAction.EnableTempRaycast(button, dialog.gameObject);
-            dialog.onDisable = () => TempRaycastAction.DisableTempRaycast(dialog.sceneActionName);
+            dialog.onEnable = () => dialog.sceneActionName = TempRaycastAction.EnableTempRaycast(action, dialog.gameObject);
+            dialog.onDisable = () => TempRaycastAction.DisableTempRaycast(action, dialog.sceneActionName);
             dialog.gameObject.SetActive(true);
         }
     }
@@ -39,59 +38,56 @@ namespace BaroqueUI
         ArrayList t_disabled;
         GameObject dialog;
 
-        static public string EnableTempRaycast(EControllerButton button, GameObject dialog)
+        static public string EnableTempRaycast(ControllerAction action, GameObject dialog)
         {
             string action_name = "TempRaycast" + action_num;
             action_num++;
 
-            foreach (var ctrl in BaroqueUI_Controller.GetAllControllers())
+            /* disable all other actions, on this controller */
+            BaroqueUI_Controller ctrl = action.controller;
+            var disabled = new ArrayList();
+            foreach (var act in ctrl.GetComponentsInChildren<ControllerAction>())
             {
-                /* disable all other actions for the same button, for each controller */
-                var disabled = new ArrayList();
-                foreach (var act in ctrl.GetComponentsInChildren<ControllerAction>())
+                if (!act.isActiveAndEnabled)
+                    continue;
+                if (act.gameObject == ctrl.gameObject)
                 {
-                    if (act.controllerButton != button || !act.isActiveAndEnabled)
-                        continue;
-                    if (act.gameObject == ctrl.gameObject)
-                    {
-                        disabled.Add(act);
-                        act.enabled = false;
-                    }
-                    else
-                    {
-                        disabled.Add(act.gameObject);
-                        act.gameObject.SetActive(false);
-                    }
+                    disabled.Add(act);
+                    act.enabled = false;
                 }
-
-                /* add a TempTaycastAction */
-                TempRaycastAction temp_act = ctrl.gameObject.AddComponent<TempRaycastAction>();
-                temp_act.Reset();
-                temp_act.t_disabled = disabled;
-                temp_act.actionName = action_name;
-                temp_act.dialog = dialog;
+                else
+                {
+                    disabled.Add(act.gameObject);
+                    act.gameObject.SetActive(false);
+                }
             }
+
+            /* add a TempTaycastAction */
+            TempRaycastAction temp_act = ctrl.gameObject.AddComponent<TempRaycastAction>();
+            temp_act.Reset();
+            temp_act.t_disabled = disabled;
+            temp_act.actionName = action_name;
+            temp_act.dialog = dialog;
+
             return action_name;
         }
 
-        static public void DisableTempRaycast(string action_name)
+        static public void DisableTempRaycast(ControllerAction action, string action_name)
         {
-            foreach (var ctrl in BaroqueUI_Controller.GetAllControllers())
+            BaroqueUI_Controller ctrl = action.controller;
+            foreach (var temp_act in ctrl.GetComponents<TempRaycastAction>())
             {
-                foreach (var temp_act in ctrl.GetComponents<TempRaycastAction>())
+                if (temp_act.actionName == action_name)
                 {
-                    if (temp_act.actionName == action_name)
+                    foreach (var go in temp_act.t_disabled)
                     {
-                        foreach (var go in temp_act.t_disabled)
-                        {
-                            if (go is GameObject)
-                                (go as GameObject).SetActive(true);
-                            else
-                                (go as ControllerAction).enabled = true;
-                        }
-                        temp_act.enabled = false;
-                        Destroy(temp_act);
+                        if (go is GameObject)
+                            (go as GameObject).SetActive(true);
+                        else
+                            (go as ControllerAction).enabled = true;
                     }
+                    temp_act.enabled = false;
+                    Destroy(temp_act);
                 }
             }
         }

@@ -10,36 +10,45 @@ public class MetalScript : MonoBehaviour
     public GameObject selectedPointPrefab;
 
     Mesh mesh;
+    Vector3[] vertices;   /* a cache, because reading mesh.vertices is not an O(1) operation */
     WeakReference[] cache_hover_vertex, cache_hover_line, cache_hover_triangle;
 
     void Start()
     {
         mesh = GetComponent<MeshFilter>().mesh;
+        vertices = mesh.vertices;
         cache_hover_vertex = new WeakReference[mesh.vertices.Length];
         cache_hover_line = new WeakReference[mesh.triangles.Length];
         cache_hover_triangle = new WeakReference[mesh.triangles.Length / 3];
         SceneAction.RegisterHover("Deform", gameObject, FindHover);
-        SceneAction.Register("Move", gameObject, buttonEnter: OnMoveZoomEnter, buttonOver: OnMoveZoomOver, buttonLeave: OnMoveZoomLeave,
+        SceneAction.Register("Move", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
                              buttonDown: OnMoveDown, buttonDrag: OnMoveDrag);
-        SceneAction.Register("Zoom", gameObject, buttonEnter: OnMoveZoomEnter, buttonOver: OnMoveZoomOver, buttonLeave: OnMoveZoomLeave,
+        SceneAction.Register("Zoom", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
                              buttonDown: OnZoomDown, buttonDrag: OnZoomDrag);
-        UpdateCollider();
+        //SceneAction.Register("Select", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
+        //                     buttonDown: OnSelectDown, buttonDrag: OnSelectDrag);
+        UpdatedMeshVertices();
     }
 
-    void UpdateCollider()
+    void UpdatedMeshVertices()
     {
-        var coll = GetComponent<BoxCollider>();
+        /*var coll = GetComponent<BoxCollider>();
         Bounds bounds = mesh.bounds;
         coll.center = bounds.center;
         coll.size = (bounds.extents + new Vector3(0.1f, 0.1f, 0.1f)) * 2f;
+        */
+        mesh.vertices = vertices;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
 
     /**********  Deform  **********/
 
-    const float DISTANCE_VERTEX_MIN   = 0.15f;
-    const float DISTANCE_LINE_MIN     = 0.12f;
-    const float DISTANCE_TRIANGLE_MIN = 0.1f;
+    const float DISTANCE_VERTEX_MIN   = 0.25f;
+    const float DISTANCE_LINE_MIN     = 0.22f;
+    const float DISTANCE_TRIANGLE_MIN = 0.2f;
 
     private Hover FindHover(ControllerAction action, ControllerSnapshot snapshot)
     {
@@ -54,7 +63,6 @@ public class MetalScript : MonoBehaviour
 
     Hover FindClosestVertex(Vector3 p)
     {
-        Vector3[] vertices = mesh.vertices;
         float distance_min_2 = DISTANCE_VERTEX_MIN * DISTANCE_VERTEX_MIN;
         int closest = -1;
 
@@ -88,7 +96,6 @@ public class MetalScript : MonoBehaviour
 
     Hover FindClosestLine(Vector3 p)
     {
-        Vector3[] vertices = mesh.vertices;
         int[] triangles = mesh.triangles;
         float distance_min_2 = DISTANCE_LINE_MIN * DISTANCE_LINE_MIN;
         int closest = -1;
@@ -127,7 +134,6 @@ public class MetalScript : MonoBehaviour
 
     Hover FindClosestTriangle(Vector3 p)
     {
-        Vector3[] vertices = mesh.vertices;
         int[] triangles = mesh.triangles;
         float distance_min = DISTANCE_TRIANGLE_MIN;
         int closest = -1;
@@ -174,44 +180,45 @@ public class MetalScript : MonoBehaviour
         MetalScript ms;
         int[] vertices_index;
         GameObject[] selected_points;
-        Vector3[] vertices;
-        Vector3[] origin_positions;
         Material[] origin_materials;
+        Vector3 prev_position;
 
         public MeshVerticesHover(MetalScript ms, int[] vertices_index)
         {
             this.ms = ms;
             this.vertices_index = vertices_index;
             selected_points = new GameObject[vertices_index.Length];
-            origin_positions = new Vector3[vertices_index.Length];
             origin_materials = new Material[vertices_index.Length];
         }
 
         public Vector3 GetVertex(int i)
         {
-            return ms.transform.TransformPoint(vertices[vertices_index[i]]);
+            return ms.transform.TransformPoint(ms.vertices[vertices_index[i]]);
         }
 
         public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
         {
-            vertices = ms.mesh.vertices;
             for (int i = 0; i < vertices_index.Length; i++)
-                selected_points[i] = Instantiate(ms.selectedPointPrefab, GetVertex(i), Quaternion.identity);
+                selected_points[i] = Instantiate(ms.selectedPointPrefab);
+        }
+
+        public override void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
+        {
+            for (int i = 0; i < vertices_index.Length; i++)
+                selected_points[i].transform.position = GetVertex(i);
         }
 
         public override void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
         {
             foreach (var selected_point in selected_points)
                 Destroy(selected_point);
-            vertices = null;
         }
 
         public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
         {
+            prev_position = ms.transform.InverseTransformPoint(action.transform.position);
             for (int i = 0; i < vertices_index.Length; i++)
             {
-                origin_positions[i] = GetVertex(i) - action.transform.position;
-
                 MeshRenderer rend = selected_points[i].GetComponent<MeshRenderer>();
                 origin_materials[i] = rend.sharedMaterial;
                 Color c = rend.material.color;
@@ -223,20 +230,19 @@ public class MetalScript : MonoBehaviour
 
         public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
         {
+            Vector3 new_position = ms.transform.InverseTransformPoint(action.transform.position);
+            Vector3 delta = new_position - prev_position;
+            prev_position = new_position;
             for (int i = 0; i < vertices_index.Length; i++)
             {
-                Vector3 p = origin_positions[i] + action.transform.position;
-                vertices[vertices_index[i]] = ms.transform.InverseTransformPoint(p);
-                selected_points[i].transform.position = p;
+                ms.vertices[vertices_index[i]] += delta;
+                selected_points[i].transform.position = GetVertex(i);
             }
-            ms.mesh.vertices = vertices;
-            ms.mesh.RecalculateNormals();
-            ms.mesh.RecalculateBounds();
+            ms.UpdatedMeshVertices();
         }
 
         public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
         {
-            ms.UpdateCollider();
             for (int i = 0; i < vertices_index.Length; i++)
                 selected_points[i].GetComponent<MeshRenderer>().sharedMaterial = origin_materials[i];
             action.transform.Find("Trigger Location").gameObject.SetActive(true);
@@ -244,7 +250,7 @@ public class MetalScript : MonoBehaviour
     }
 
 
-    /**********  Move  **********/
+    /**********  Move/Zoom  **********/
 
     Vector3 move_origin;
     Transform move_blink;
@@ -253,18 +259,18 @@ public class MetalScript : MonoBehaviour
     Vector3 scale_origin, scale_p1, scale_p2;
     float scale_z_org;
 
-    private void OnMoveZoomEnter(ControllerAction action, ControllerSnapshot snapshot)
+    private void OnIndicatorEnter(ControllerAction action, ControllerSnapshot snapshot)
     {
         move_blink = action.transform.Find("Indicator");
         move_original_scale = move_blink.localScale;
     }
 
-    private void OnMoveZoomOver(ControllerAction action, ControllerSnapshot snapshot)
+    private void OnIndicatorOver(ControllerAction action, ControllerSnapshot snapshot)
     {
         move_blink.localScale = move_original_scale * (1.5f + Mathf.Sin(Time.time * 2 * Mathf.PI) * 0.5f);
     }
 
-    private void OnMoveZoomLeave(ControllerAction action, ControllerSnapshot snapshot)
+    private void OnIndicatorLeave(ControllerAction action, ControllerSnapshot snapshot)
     {
         move_blink.localScale = move_original_scale;
         move_blink = null;
@@ -296,4 +302,9 @@ public class MetalScript : MonoBehaviour
         transform.localScale = scale_origin * scale;
         transform.position = scale_p1 * scale + scale_p2;
     }
+
+
+    /**********  Selection box maker  **********/
+
+    /* ... */
 }

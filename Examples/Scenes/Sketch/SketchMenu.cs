@@ -11,7 +11,7 @@ public class SketchMenu : ControllerAction
 
     void Start()
     {
-        all_action_names = new HashSet<string> { "Deform", "Move", "Zoom" };
+        all_action_names = new HashSet<string> { "Deform", "Select", "Move", "Zoom" };
         hover = new DelegatingHover(reversed_priority: 20, buttonDown: OnButtonDown);
     }
 
@@ -19,6 +19,7 @@ public class SketchMenu : ControllerAction
     {
         Menu menu = new Menu {
             { "Deform points", () => SelectMode("Deform") },
+            { "Select and defrom", () => SelectMode("Select") },
             { "Move mesh", () => SelectMode("Move") },
             { "Scale mesh", () => SelectMode("Zoom") },
         };
