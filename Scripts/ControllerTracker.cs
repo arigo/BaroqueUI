@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace BaroqueUI
 {
+    public enum EControllerSelection { Left = (1 << 0), Right = (1 << 1), Either = Left | Right };
+
+
     public abstract class BaseControllerTracker : MonoBehaviour
     {
         public virtual void OnEnter(Controller controller) { }
@@ -33,7 +36,6 @@ namespace BaroqueUI
 
         internal static long NUMBER;
         internal long creation_order;
-        internal abstract bool ControllerMatches(Controller controller);
 
         protected void Awake()
         {
@@ -62,16 +64,10 @@ namespace BaroqueUI
          * Use the ConcurrentControllerTracker subclass to get reports about both 
          * controllers concurrently.
          */
-        public enum EControllerSelection { Left = (1<<0), Right = (1<<1), Either = Left|Right };
         public EControllerSelection selectableControllers = EControllerSelection.Either;
 
         public virtual void OnMoveOver(Controller controller) { }
         public virtual void OnTriggerDrag(Controller controller) { }
-
-        internal override bool ControllerMatches(Controller controller)
-        {
-            return ((int)selectableControllers & (1 << controller.index)) != 0;
-        }
     }
 
     public abstract class ConcurrentControllerTracker : BaseControllerTracker

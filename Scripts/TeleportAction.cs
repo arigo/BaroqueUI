@@ -5,13 +5,14 @@ using UnityEngine;
 using Valve.VR;
 
 
-#if false
 namespace BaroqueUI
 {
-    public class TeleportAction : ControllerAction
+    public class TeleportAction : MonoBehaviour
     {
         [Header("Teleport beam parameters")]
-        public float beamVelocity;
+        public EControllerSelection controllerSelection;
+        public EControllerButton controllerButton;
+        public float beamForwardVelocity, beamUpVelocity;
         public LayerMask traceLayerMask;
         public Color validArcColor, invalidArcColor;
         public Material teleportMaterial;
@@ -20,10 +21,14 @@ namespace BaroqueUI
         Valve.VR.InteractionSystem.TeleportArc arc;
         Transform invalid_reticle, destination_reticle;
         Vector3 destination_position;
+        bool destination_valid;
+        Controller active_controller;
 
         public void Reset()
         {
-            beamVelocity = 10f;
+            beamForwardVelocity = 10f;
+            beamUpVelocity = 3f;
+            controllerSelection = EControllerSelection.Either;
             controllerButton = EControllerButton.Touchpad;
             traceLayerMask = 1 << LayerMask.NameToLayer("Default");
             teleportMaterial = Resources.Load<Material>("BaroqueUI/TeleportPointer");
@@ -47,66 +52,32 @@ namespace BaroqueUI
             destination_reticle.gameObject.SetActive(false);
         }
 
-        public override Hover FindHover(ControllerSnapshot snapshot)
+        void Update()
         {
-            if (IsPressingButton(snapshot))
-                return new DisplayArcHover(this);
-            return null;
-        }
-
-        internal void StartTeleporting(Vector3 destination)
-        {
-            FadeToColor(Color.black, 0.1f);
-            destination_position = destination;
-            Invoke("ChangeLocation", 0.1f);
-        }
-
-        void FadeToColor(Color target_color, float duration)
-        {
-            var compositor = OpenVR.Compositor;
-            if (compositor != null)
-                compositor.FadeToColor(duration, target_color.r, target_color.g, target_color.b, target_color.a, false);
-        }
-
-        void ChangeLocation()
-        {
-            Transform camera_rig = GetComponentInParent<SteamVR_ControllerManager>().transform;
-            Transform steamvr_camera = camera_rig.GetComponentInChildren<SteamVR_Camera>().transform;
-            Vector3 v = camera_rig.position + destination_position - steamvr_camera.position;
-            v.y = destination_position.y;
-            camera_rig.position = v;
-            FadeToColor(Color.clear, 0.2f);
-        }
-
-
-        class DisplayArcHover : Hover
-        {
-            TeleportAction teleport;
-            Vector3 destination;
-            bool destination_valid = false;
-
-            internal DisplayArcHover(TeleportAction teleport)
+            if (active_controller == null)
             {
-                this.teleport = teleport;
+                foreach (var ctrl in BaroqueUI.GetControllers())
+                {
+                    if (ctrl.Matches(controllerSelection) && ctrl.GetButton(controllerButton))
+                    {
+                        arc.Show();
+                        active_controller = ctrl;
+                        break;
+                    }
+                }
+                if (active_controller == null)
+                    return;
             }
 
-            public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
-            {
-                /* This is called just after the class is instantiated, but only if this Hover is really
-                 * selected by the logic of priorities is the end. 
-                 */
-                teleport.arc.Show();
-            }
-
-            public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
+            if (active_controller.GetButton(controllerButton))
             {
                 bool saved = Physics.queriesHitTriggers;
                 try
                 {
                     Physics.queriesHitTriggers = false;
 
-                    var arc = teleport.arc;
-                    arc.SetArcData(teleport.transform.position, teleport.transform.forward * teleport.beamVelocity, true, false);
+                    Transform tr = active_controller.transform;
+                    arc.SetArcData(tr.position, tr.TransformDirection(new Vector3(0, beamUpVelocity, beamForwardVelocity)), true, false);
 
                     destination_valid = false;
                     bool show_invalid = false;
@@ -124,41 +95,63 @@ namespace BaroqueUI
 
                         if (Physics.CheckCapsule(hitInfo.point + (ABOVE_GROUND + RADIUS) * Vector3.up,
                                                     hitInfo.point + (ABOVE_GROUND + RADIUS + DISTANCE) * Vector3.up,
-                                                    RADIUS, teleport.traceLayerMask, QueryTriggerInteraction.Ignore))
+                                                    RADIUS, traceLayerMask, QueryTriggerInteraction.Ignore))
                         {
                             /* invalid position */
-                            teleport.invalid_reticle.position = hitInfo.point;
-                            teleport.invalid_reticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
+                            invalid_reticle.position = hitInfo.point;
+                            invalid_reticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
                             show_invalid = true;
                         }
                         else
                         {
                             /* valid position */
-                            teleport.invalid_reticle.gameObject.SetActive(false);
-                            teleport.destination_reticle.position = destination = hitInfo.point;
+                            invalid_reticle.gameObject.SetActive(false);
+                            destination_reticle.position = destination_position = hitInfo.point;
                             destination_valid = true;
                         }
                     }
-                    teleport.invalid_reticle.gameObject.SetActive(show_invalid);
-                    teleport.destination_reticle.gameObject.SetActive(destination_valid);
-                    arc.SetColor(destination_valid ? teleport.validArcColor : teleport.invalidArcColor);
+                    invalid_reticle.gameObject.SetActive(show_invalid);
+                    destination_reticle.gameObject.SetActive(destination_valid);
+                    arc.SetColor(destination_valid ? validArcColor : invalidArcColor);
                 }
                 finally
                 {
                     Physics.queriesHitTriggers = saved;
                 }
             }
-
-            public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
+            else
             {
-                teleport.arc.Hide();
-                teleport.invalid_reticle.gameObject.SetActive(false);
-                teleport.destination_reticle.gameObject.SetActive(false);
+                active_controller = null;
+                arc.Hide();
+                invalid_reticle.gameObject.SetActive(false);
+                destination_reticle.gameObject.SetActive(false);
 
                 if (destination_valid)
-                    teleport.StartTeleporting(destination);
+                    StartTeleporting();
             }
+        }
+
+        void StartTeleporting()
+        {
+            FadeToColor(Color.black, 0.1f);
+            Invoke("ChangeLocation", 0.1f);
+        }
+
+        void FadeToColor(Color target_color, float duration)
+        {
+            var compositor = OpenVR.Compositor;
+            if (compositor != null)
+                compositor.FadeToColor(duration, target_color.r, target_color.g, target_color.b, target_color.a, false);
+        }
+
+        void ChangeLocation()
+        {
+            Transform camera_rig = BaroqueUI.GetSteamVRManager().transform;
+            Transform steamvr_camera = BaroqueUI.GetHeadTransform();
+            Vector3 v = camera_rig.position + destination_position - steamvr_camera.position;
+            v.y = destination_position.y;
+            camera_rig.position = v;
+            FadeToColor(Color.clear, 0.2f);
         }
     }
 }
-#endif

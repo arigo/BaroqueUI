@@ -164,7 +164,7 @@ namespace BaroqueUI
                     {
                         foreach (var tracker in tr.GetComponents<BaseControllerTracker>())
                         {
-                            if (!tracker.ControllerMatches(this))
+                            if (tracker is ControllerTracker && !Matches((tracker as ControllerTracker).selectableControllers))
                                 continue;
 
                             float priority = tracker.GetPriority(this);
@@ -189,6 +189,11 @@ namespace BaroqueUI
                 if (is_grabbing)
                     Debug.Assert(tracker_hover);
             }
+        }
+
+        public bool Matches(EControllerSelection choice)
+        {
+            return ((int)choice & (1 << index)) != 0;
         }
 
         void UnGrab()
