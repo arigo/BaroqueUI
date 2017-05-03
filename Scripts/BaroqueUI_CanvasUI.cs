@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using UnityEngine.EventSystems;
 
 
+#if false
 namespace BaroqueUI
 {
     public class BaroqueUI_CanvasUI : MonoBehaviour
@@ -273,3 +274,4 @@ namespace BaroqueUI
         }
     }
 }
+#endif

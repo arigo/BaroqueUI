@@ -7,6 +7,7 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 
 
+#if false
 namespace BaroqueUI
 {
     public class BaroqueUI_Dialog : MonoBehaviour
@@ -355,3 +356,4 @@ namespace BaroqueUI
         }
     }
 }
+#endif

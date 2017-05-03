@@ -4,10 +4,14 @@ using UnityEngine;
 using BaroqueUI;
 
 
-public class RotateMe : MonoBehaviour
+public class RotateMe : ControllerTracker
 {
-    public string sceneActionName = "Default";
-    public BaroqueUI_Dialog dialogSetAngle;
+    public override void OnTriggerDown(Controller controller)
+    {
+        Debug.Log("RotateMe::OnTriggerDown: " + controller);
+    }
+#if false
+    public Dialog dialogSetAngle;
 
     private void Start()
     {
@@ -32,4 +36,5 @@ public class RotateMe : MonoBehaviour
         v.y = angle;
         transform.rotation = Quaternion.Euler(v);
     }
-}
+#endif
+    }

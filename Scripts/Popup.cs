@@ -7,6 +7,7 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 
 
+#if false
 namespace BaroqueUI
 {
     public abstract class BasePopup
@@ -198,3 +199,4 @@ namespace BaroqueUI
         }
     }
 }
+#endif

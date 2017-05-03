@@ -5,6 +5,7 @@ using UnityEngine;
 using Valve.VR;
 
 
+#if false
 namespace BaroqueUI
 {
     public class TeleportAction : ControllerAction
@@ -160,3 +161,4 @@ namespace BaroqueUI
         }
     }
 }
+#endif

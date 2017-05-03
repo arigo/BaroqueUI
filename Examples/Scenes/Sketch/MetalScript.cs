@@ -5,32 +5,28 @@ using BaroqueUI;
 using System;
 
 
-public class MetalScript : MonoBehaviour
+public class MetalScript : ControllerTracker
 {
-    public GameObject selectedPointPrefab;
+#if false
+    public GameObject hoveringPointPrefab, selectedPointPrefab, fixedPointPrefab;
     public GameObject selectionCubePrefab;
+    public GameObject pointerDeform, pointerSelect, pointerMove, pointerZoom;
+
+    public enum Mode { Deform, Select, Move, Zoom };
+    static Mode mode = Mode.Deform;
 
     Mesh mesh;
     Vector3[] vertices;   /* a cache, because reading mesh.vertices is not an O(1) operation */
     int[] triangles;      /* same */
-    WeakReference[] cache_hover_vertex, cache_hover_edge, cache_hover_triangle;
-    Dictionary<ControllerAction, SelectionHover> selection_hovers;
 
     void Start()
     {
         mesh = GetComponent<MeshFilter>().mesh;
         vertices = mesh.vertices;
         triangles = mesh.triangles;
-        cache_hover_vertex = new WeakReference[vertices.Length];
-        cache_hover_edge = new WeakReference[triangles.Length];
-        cache_hover_triangle = new WeakReference[triangles.Length / 3];
-        selection_hovers = new Dictionary<ControllerAction, SelectionHover>();
-        SceneAction.RegisterHover("Deform", gameObject, FindHover);
-        SceneAction.Register("Move", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
-                             buttonDown: OnMoveDown, buttonDrag: OnMoveDrag);
-        SceneAction.Register("Zoom", gameObject, buttonEnter: OnIndicatorEnter, buttonOver: OnIndicatorOver, buttonLeave: OnIndicatorLeave,
-                             buttonDown: OnZoomDown, buttonDrag: OnZoomDrag);
-        SceneAction.RegisterHover("Select", gameObject, FindSelectionHover);
+        sel_states = new SelState[vertices.Length];
+        g_points = new GameObject[vertices.Length];
+
         UpdatedMeshVertices();
     }
 
@@ -47,36 +43,67 @@ public class MetalScript : MonoBehaviour
         GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
-
-    /**********  Deform  **********/
-
-    const float DISTANCE_VERTEX_MIN   = 0.25f;
-    const float DISTANCE_EDGE_MIN     = 0.22f;
-    const float DISTANCE_TRIANGLE_MIN = 0.2f;
-
-    private Hover FindHover(ControllerAction action, ControllerSnapshot snapshot)
+    GameObject PointerPrefab()
     {
-        Vector3 p = transform.InverseTransformPoint(action.transform.position);
-        Hover hover = FindClosestVertex(p);
-        if (hover == null)
-            hover = FindClosestEdge(p);
-        if (hover == null)
-            hover = FindClosestTriangle(p);
-        return hover;
+        switch (mode)
+        {
+            case Mode.Deform: return pointerDeform;
+            case Mode.Select: return pointerSelect;
+            case Mode.Move: return pointerMove;
+            case Mode.Zoom: return pointerZoom;
+        }
+        return null;
     }
+
+    GameObject SelectedPointPrefab(SelState state)
+    {
+        switch (state)
+        {
+            case SelState.Hovering: return hoveringPointPrefab;
+            case SelState.Selected: return selectedPointPrefab;
+            case SelState.Fixed: return fixedPointPrefab;
+        }
+        return null;
+    }
+
+
+    /****************************************************************************************/
+
+    delegate bool SubsetDelegate(int index);
+
+    int[] FindSelection(Controller controller, SubsetDelegate include = null)
+    {
+        if (include == null)
+            include = (index) => true;
+
+        Vector3 p = transform.InverseTransformPoint(controller.position);
+
+        int[] result = FindClosestVertex(p, include);
+        if (result == null)
+            result = FindClosestEdge(p, include);
+        if (result == null)
+            result = FindClosestTriangle(p, include);
+        return result;
+    }
+
+    const float DISTANCE_VERTEX_MIN = 0.25f;
+    const float DISTANCE_EDGE_MIN = 0.22f;
+    const float DISTANCE_TRIANGLE_MIN = 0.2f;
 
     static public float DistanceToVertex(Vector3 v, Vector3 p)
     {
         return (v - p).magnitude;
     }
 
-    Hover FindClosestVertex(Vector3 p)
+    int[] FindClosestVertex(Vector3 p, SubsetDelegate include)
     {
         float distance_min = DISTANCE_VERTEX_MIN;
         int closest = -1;
 
         for (int i = 0; i < vertices.Length; i++)
         {
+            if (!include(i))
+                continue;
             float distance = DistanceToVertex(vertices[i], p);
             if (distance < distance_min)
             {
@@ -87,15 +114,7 @@ public class MetalScript : MonoBehaviour
 
         if (closest < 0)
             return null;
-
-        WeakReference wr = cache_hover_vertex[closest];
-        Hover hover = wr == null ? null : wr.Target as Hover;
-        if (hover == null)
-        {
-            hover = new MeshVerticesHover(this, new int[] { closest });
-            cache_hover_vertex[closest] = new WeakReference(hover);
-        }
-        return hover;
+        return new int[] { closest };
     }
 
     static public float DistanceToEdge(Vector3 v1, Vector3 v2, Vector3 p)
@@ -114,7 +133,7 @@ public class MetalScript : MonoBehaviour
         return (i % 3) == 2 ? i - 2 : i + 1;
     }
 
-    Hover FindClosestEdge(Vector3 p)
+    int[] FindClosestEdge(Vector3 p, SubsetDelegate include)
     {
         float distance_min = DISTANCE_EDGE_MIN;
         int closest = -1;
@@ -123,6 +142,8 @@ public class MetalScript : MonoBehaviour
         {
             int t1 = triangles[i];
             int t2 = triangles[LineNext(i)];
+            if (!include(t1) || !include(t2))
+                continue;
             float distance = DistanceToEdge(vertices[t1], vertices[t2], p);
             if (distance < distance_min)
             {
@@ -133,16 +154,7 @@ public class MetalScript : MonoBehaviour
 
         if (closest < 0)
             return null;
-
-        WeakReference wr = cache_hover_edge[closest];
-        Hover hover = wr == null ? null : wr.Target as Hover;
-        if (hover == null)
-        {
-            hover = new MeshVerticesHover(this, new int[] {
-                triangles[closest], triangles[LineNext(closest)] });
-            cache_hover_edge[closest] = new WeakReference(hover);
-        }
-        return hover;
+        return new int[] { triangles[closest], triangles[LineNext(closest)] };
     }
 
     static public float DistanceToTriangle(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p)
@@ -155,7 +167,7 @@ public class MetalScript : MonoBehaviour
             return float.PositiveInfinity;
     }
 
-    Hover FindClosestTriangle(Vector3 p)
+    int[] FindClosestTriangle(Vector3 p, SubsetDelegate include)
     {
         float distance_min = DISTANCE_TRIANGLE_MIN;
         int closest = -1;
@@ -165,6 +177,8 @@ public class MetalScript : MonoBehaviour
             int t0 = triangles[i + 0];
             int t1 = triangles[i + 1];
             int t2 = triangles[i + 2];
+            if (!include(t0) || !include(t1) || !include(t2))
+                continue;
             float distance = DistanceToTriangle(vertices[t0], vertices[t1], vertices[t2], p);
             if (distance < distance_min)
             {
@@ -175,18 +189,105 @@ public class MetalScript : MonoBehaviour
 
         if (closest < 0)
             return null;
-
-        int wr_index = closest / 3;
-        WeakReference wr = cache_hover_triangle[wr_index];
-        Hover hover = wr == null ? null : wr.Target as Hover;
-        if (hover == null)
-        {
-            hover = new MeshVerticesHover(this, new int[] {
-                triangles[closest], triangles[closest + 1], triangles[closest + 2] });
-            cache_hover_triangle[wr_index] = new WeakReference(hover);
-        }
-        return hover;
+        return new int[] { triangles[closest], triangles[closest + 1], triangles[closest + 2] };
     }
+
+
+    /****************************************************************************************/
+
+    enum SelState { NotSelected, Hovering, Selected, Fixed };
+    SelState[] sel_states;
+    GameObject[] g_points;
+    int[] hovering_indexes;
+
+    void SetSelState(int vertex_index, SelState state)
+    {
+        if (sel_states[vertex_index] == state)
+            return;
+        sel_states[vertex_index] = state;
+        if (g_points[vertex_index] != null)
+        {
+            Destroy(g_points[vertex_index]);
+            g_points[vertex_index] = null;
+        }
+    }
+
+
+    class Local
+    {
+        /* info that needs to be stored for each controller independently */
+        public GameObject[] selected_points;
+    }
+    Local[] locals;
+
+    public override void OnEnter(Controller controller)
+    {
+        controller.SetPointer(PointerPrefab());
+    }
+
+    public override void OnLeave(Controller controller)
+    {
+        SetSelectionPoints(controller.index, 0);
+    }
+
+    GameObject[] SetSelectionPoints(int cindex, int count)
+    {
+        Local local = locals[cindex];
+        int old_count = local.selected_points == null ? 0 : local.selected_points.Length;
+        for (int i = count; i < old_count; i++)
+            Destroy(local.selected_points[i]);
+        Array.Resize(ref local.selected_points, count);
+        for (int i = old_count; i < count; i++)
+            local.selected_points[i] = Instantiate(selectedPointPrefabs[cindex], transform);
+        return local.selected_points;
+    }
+
+    public override void OnMoveOver(Controller controller)
+    {
+        int[] selected = FindSelection(controller);
+        float scale;
+
+        if (selected == null)
+        {
+            /* not close to any vertex */
+            SetSelectionPoints(controller.index, 0);
+            scale = 1;
+        }
+        else
+        {
+            /* close to at least one vertex */
+            GameObject[] sel_pts = SetSelectionPoints(controller.index, selected.Length);
+            for (int i = 0; i < selected.Length; i++)
+                sel_pts[i].transform.localPosition = vertices[selected[i]];
+            
+            scale = 1 + Mathf.Sin(Time.time * 2 * Mathf.PI);
+        }
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (sel_states[i] == SelState.Hovering)
+                ;
+        }
+
+        /* update the selection points */
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (sel_states[i] == SelState.NotSelected)
+                continue;
+            if (g_points[i] == null)
+                g_points[i] = Instantiate(SelectedPointPrefab(sel_states[i]), transform);
+            g_points[i].transform.localPosition = vertices[i];
+        }
+
+        GameObject go = controller.GetPointer();
+        GameObject prefab = PointerPrefab();
+        if (go != null && prefab != null)
+            go.transform.localScale = prefab.transform.localScale * scale;
+    }
+    
+
+    /**********  Deform  **********/
+
 
     class MeshVerticesHover : Hover
     {
@@ -459,4 +560,5 @@ public class MetalScript : MonoBehaviour
             Destroy(selection_cube);
         }
     }
+#endif
 }

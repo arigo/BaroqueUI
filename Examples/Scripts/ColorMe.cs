@@ -1,20 +1,16 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 
 
-public class ColorMe : MonoBehaviour
+public class ColorMe : ControllerTracker
 {
-    public string sceneActionName = "Default";
-
-    private void Start()
+    public override void OnTriggerDown(Controller controller)
     {
-        SceneAction.Register(sceneActionName, gameObject, buttonDown: OnButtonDown);
-    }
-
-    private void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
-    {
+        Debug.Log("ColorMe::OnTriggerDown: " + controller);
+#if false
         Material mat = GetComponent<Renderer>().material;
 
         var menu = new Menu {
@@ -23,6 +19,7 @@ public class ColorMe : MonoBehaviour
             { "Blue", () => mat.color = Color.blue},
             { "White", () => mat.color = Color.white},
         };
-        menu.ShowPopup(action, snapshot);
+        menu.ShowPopup(controller);
+#endif
     }
 }
