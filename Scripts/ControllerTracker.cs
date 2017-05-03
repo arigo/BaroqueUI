@@ -15,6 +15,8 @@ namespace BaroqueUI
         public virtual void OnLeave(Controller controller) { }
         public virtual void OnTriggerDown(Controller controller) { }
         public virtual void OnTriggerUp(Controller controller) { }
+        public virtual void OnGripDown(Controller controller) { }
+        public virtual void OnGripUp(Controller controller) { }
 
         public virtual float GetPriority(Controller controller)
         {
@@ -68,6 +70,7 @@ namespace BaroqueUI
 
         public virtual void OnMoveOver(Controller controller) { }
         public virtual void OnTriggerDrag(Controller controller) { }
+        public virtual void OnGripDrag(Controller controller) { }
     }
 
     public abstract class ConcurrentControllerTracker : BaseControllerTracker

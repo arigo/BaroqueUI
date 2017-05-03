@@ -41,7 +41,10 @@ namespace BaroqueUI
             return (bitmask_buttons & (1U << (int)btn)) != 0;
         }
 
-        public bool isGrabbing { get { return is_grabbing; } }
+        public bool IsGrabbingWith(EControllerButton btn)
+        {
+            return is_grabbing && grabbing_button == btn;
+        }
 
         public int index { get { return controller_index; } }
 
@@ -64,6 +67,7 @@ namespace BaroqueUI
         BaseControllerTracker tracker_hover_next;
         float tracker_hover_next_priority;
         bool is_tracking, is_clicking_now, is_grabbing;
+        EControllerButton clicking_button, grabbing_button;
 
         SteamVR_TrackedObject trackedObject;
 
@@ -116,10 +120,18 @@ namespace BaroqueUI
 
                 uint b = 0;
                 if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
-                if (grip != 0) b |= (1U << (int)EControllerButton.Grip);
+                if (grip != 0) {
+                    if (!GetButton(EControllerButton.Grip))
+                    {
+                        is_clicking_now = true; clicking_button = EControllerButton.Grip;
+                    }
+                    b |= (1U << (int)EControllerButton.Grip);
+                }
                 if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
                 if (trigger != 0) {
-                    is_clicking_now = !GetButton(EControllerButton.Trigger);
+                    if (!GetButton(EControllerButton.Trigger)) {
+                        is_clicking_now = true;  clicking_button = EControllerButton.Trigger;
+                    }
                     b |= (1U << (int)EControllerButton.Trigger);
                 }
                 bitmask_buttons = b;
@@ -183,9 +195,7 @@ namespace BaroqueUI
                     tracker_hover_next_priority = best_priority;
                 }
 
-                /* sanity checks */
-                if (is_clicking_now)
-                    Debug.Assert(GetButton(EControllerButton.Trigger) && !is_grabbing);
+                /* sanity check */
                 if (is_grabbing)
                     Debug.Assert(tracker_hover);
             }
@@ -199,7 +209,15 @@ namespace BaroqueUI
         void UnGrab()
         {
             Debug.Assert(is_grabbing);
-            tracker_hover.OnTriggerUp(this);
+            switch (grabbing_button)
+            {
+                case EControllerButton.Trigger:
+                    tracker_hover.OnTriggerUp(this);
+                    break;
+                case EControllerButton.Grip:
+                    tracker_hover.OnGripUp(this);
+                    break;
+            }
             is_grabbing = false;
         }
 
@@ -259,7 +277,15 @@ namespace BaroqueUI
                 if (tracker is ControllerTracker)
                 {
                     if (ctrl.is_grabbing)
-                        (tracker as ControllerTracker).OnTriggerDrag(ctrl);
+                        switch (ctrl.grabbing_button)
+                        {
+                            case EControllerButton.Trigger:
+                                (tracker as ControllerTracker).OnTriggerDrag(ctrl);
+                                break;
+                            case EControllerButton.Grip:
+                                (tracker as ControllerTracker).OnGripDrag(ctrl);
+                                break;
+                        }
                     else
                         (tracker as ControllerTracker).OnMoveOver(ctrl);
                 }
@@ -292,9 +318,18 @@ namespace BaroqueUI
             }
             Debug.Assert(tracker_hover == tracker_hover_next);
 
-            if (is_clicking_now)
+            if (is_clicking_now && !is_grabbing)
             {
-                tracker_hover.OnTriggerDown(this);
+                switch (clicking_button)
+                {
+                    case EControllerButton.Trigger:
+                        tracker_hover.OnTriggerDown(this);
+                        break;
+                    case EControllerButton.Grip:
+                        tracker_hover.OnGripDown(this);
+                        break;
+                }
+                grabbing_button = clicking_button;
                 is_grabbing = true;
             }
         }
