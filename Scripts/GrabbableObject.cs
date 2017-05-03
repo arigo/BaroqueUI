@@ -19,7 +19,6 @@ namespace BaroqueUI
         public override void OnEnter(Controller controller)
         {
             /* OnEnter: we are entering the grabbed object's volume.  Change to highlightColor. */
-            Debug.Log("Grab: OnEnter " + controller);
             ChangeColor(highlightColor);
         }
 
@@ -27,13 +26,11 @@ namespace BaroqueUI
         {
             /* OnLeave: we are leaving the grabbed object's volume.  Change to Color.clear,
              * which restores the original materials. */
-            Debug.Log("Grab: OnLeave " + controller);
             ChangeColor(Color.clear);
         }
 
         public override void OnTriggerDown(Controller controller)
         {
-            Debug.Log("Grab: OnTriggerDown " + controller);
             /* Called when the trigger button is pressed. */
             origin_rotation = Quaternion.Inverse(controller.rotation) * transform.rotation;
             origin_position = Quaternion.Inverse(transform.rotation) * (transform.position - controller.position);
@@ -61,13 +58,12 @@ namespace BaroqueUI
 
         public override void OnTriggerUp(Controller controller)
         {
-            Debug.Log("Grab: OnTriggerUp " + controller);
             /* OnTriggerUp: we revert the color back to highlightColor.  Note that the order of the events
-                * is well-defined: a OnEnter is always sent before OnTriggerDown, which is always sent
-                * before OnTriggerUp, which is always sent before OnLeave.  So here, we're back in the
-                * state "hovering over the object".  We may get OnLeave immediately afterward if the 
-                * controller has also left the object's proximity.
-                */
+             * is well-defined: a OnEnter is always sent before OnTriggerDown, which is always sent
+             * before OnTriggerUp, which is always sent before OnLeave.  So here, we're back in the
+             * state "hovering over the object".  We may get OnLeave immediately afterward if the 
+             * controller has also left the object's proximity.
+             */
             ChangeColor(highlightColor);
 
             if (original_nonkinematic != null)
@@ -90,9 +86,8 @@ namespace BaroqueUI
         void ChangeColor(Color color)
         {
             /* To change the color of the grabbed object, we hack around and change all renderer's
-                * "_Color" property.
-                */
-
+             * "_Color" property.
+             */
             if (color == Color.clear)
             {
                 if (original_materials != null)
@@ -110,20 +105,20 @@ namespace BaroqueUI
                 foreach (var rend in GetComponentsInChildren<Renderer>())
                 {
                     /* NB. the handling of ".materials" by Unity is an attempt at being helpful,
-                        * in a way that gives convoluted results.  For example, reading "rend.materials"
-                        * creates a clone of the Material objects if they are flagged 'from the editor'.
-                        * But it doesn't if they is a Material object created elsewhere programmatically
-                        * and assigned to several objects: in this case, the naive logic would change the
-                        * color of all these objects.
-                        * 
-                        * To take better control of what's going on, we only access ".sharedMaterials",
-                        * which gives a direct read/write interface without any copying; and we copy
-                        * ourselves when needed.
-                        * 
-                        * A second warning: don't use Instantiate<>() too freely.  It makes objects with
-                        * a name that is the original name + " (clone)".  If you keep cloning clones,
-                        * then the length of the name can be a performance issue after a while...
-                        */
+                     * in a way that gives convoluted results.  For example, reading "rend.materials"
+                     * creates a clone of the Material objects if they are flagged 'from the editor'.
+                     * But it doesn't if they is a Material object created elsewhere programmatically
+                     * and assigned to several objects: in this case, the naive logic would change the
+                     * color of all these objects.
+                     *
+                     * To take better control of what's going on, we only access ".sharedMaterials",
+                     * which gives a direct read/write interface without any copying; and we copy
+                     * ourselves when needed.
+                     *
+                     * A second warning: don't use Instantiate<>() too freely.  It makes objects with
+                     * a name that is the original name + " (clone)".  If you keep cloning clones,
+                     * then the length of the name can be a performance issue after a while...
+                     */
                     Material[] org_mats;
 
                     if (original_materials.ContainsKey(rend))

@@ -41,6 +41,8 @@ namespace BaroqueUI
             return (bitmask_buttons & (1U << (int)btn)) != 0;
         }
 
+        public bool isGrabbing { get { return is_grabbing; } }
+
         public int index { get { return controller_index; } }
 
         public static Controller GetController(int index) { return BaroqueUI.GetControllers()[index]; }

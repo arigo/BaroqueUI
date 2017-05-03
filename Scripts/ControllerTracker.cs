@@ -20,10 +20,7 @@ namespace BaroqueUI
              * default implementation uses the size of the bounding box of the collider
              * or colliders in the gameobject, and negates it; this gives a negative
              * number, but also a higher number for smaller objects.  It does not
-             * depend on the actual controller position.  In case of equality, we use
-             * time to differentiate: e.g. this default implementation returns the same
-             * result for both controllers, so the most recently entered one wins (if
-             * we are in 'Either' mode).
+             * depend on the actual controller position.
              */
             float result = 0;
             foreach (var coll in GetComponentsInChildren<Collider>())
@@ -77,11 +74,13 @@ namespace BaroqueUI
         }
     }
 
-    public class ConcurrentControllerTracker : BaseControllerTracker
+    public abstract class ConcurrentControllerTracker : BaseControllerTracker
     {
+        /* subclass that gives finer control over two-controllers interactions, at the cost
+         * of the subclasser needing more care.  OnMove() is called with the non-empty list
+         * of controllers that are currently over this zone.  See also 'controller.isGrabbing'.
+         */
         public virtual void OnMove(Controller[] controllers) { }
-
-        internal override bool ControllerMatches(Controller controller) { return true; }
     }
 }
 
