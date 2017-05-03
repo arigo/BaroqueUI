@@ -136,7 +136,7 @@ namespace BaroqueUI
                 }
                 bitmask_buttons = b;
 
-                if (is_grabbing && (trigger == 0))
+                if (is_grabbing && !GetButton(grabbing_button))
                     UnGrab();
 
                 /* read the position/rotation and update the velocity estimation */
@@ -255,8 +255,8 @@ namespace BaroqueUI
         static void CallControllerMoves(Controller[] controllers)
         {
             Debug.Assert(controllers.Length == 2);   /* for now, always exactly two */
-            BaseControllerTracker left_tracker = controllers[0].tracker_hover_next;
-            BaseControllerTracker right_tracker = controllers[1].tracker_hover_next;
+            BaseControllerTracker left_tracker = controllers[0].tracker_hover;
+            BaseControllerTracker right_tracker = controllers[1].tracker_hover;
 
             if (left_tracker == right_tracker)
             {
@@ -273,7 +273,7 @@ namespace BaroqueUI
 
             foreach (var ctrl in controllers)
             {
-                BaseControllerTracker tracker = ctrl.tracker_hover_next;
+                BaseControllerTracker tracker = ctrl.tracker_hover;
                 if (tracker is ControllerTracker)
                 {
                     if (ctrl.is_grabbing)
