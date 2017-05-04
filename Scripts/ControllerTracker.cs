@@ -44,6 +44,8 @@ namespace BaroqueUI
             creation_order = ++NUMBER;
             BaroqueUI.EnsureStarted();
         }
+
+        public virtual bool CanStartTeleportAction(Controller controller) { return true; }
     }
 
     public abstract class ControllerTracker : BaseControllerTracker

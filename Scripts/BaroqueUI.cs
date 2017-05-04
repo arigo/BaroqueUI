@@ -47,6 +47,11 @@ namespace BaroqueUI
             return controllers;
         }
 
+        static public GameObject GetPointerObject(string name)
+        {
+            return Resources.Load("BaroqueUI/Pointers/" + name) as GameObject;
+        }
+
         /*********************************************************************************************/
 
         static GameObject head, left_controller, right_controller;

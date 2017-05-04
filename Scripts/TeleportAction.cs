@@ -60,9 +60,13 @@ namespace BaroqueUI
                 {
                     if (ctrl.Matches(controllerSelection) && ctrl.GetButton(controllerButton))
                     {
-                        arc.Show();
-                        active_controller = ctrl;
-                        break;
+                        BaseControllerTracker tracker = ctrl.HoverControllerTracker();
+                        if (tracker == null || tracker.CanStartTeleportAction(ctrl))
+                        {
+                            arc.Show();
+                            active_controller = ctrl;
+                            break;
+                        }
                     }
                 }
                 if (active_controller == null)

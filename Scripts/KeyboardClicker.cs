@@ -18,8 +18,8 @@ public class KeyboardClicker : ConcurrentControllerTracker
         if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
         {
             controllerCamera = new GameObject("Controller Keyboard Camera").AddComponent<Camera>();
-            controllerCamera.clearFlags = CameraClearFlags.Nothing; //CameraClearFlags.Depth;
-            controllerCamera.cullingMask = 0; // 1 << LayerMask.NameToLayer("UI");
+            controllerCamera.clearFlags = CameraClearFlags.Nothing;
+            controllerCamera.cullingMask = 0;
             controllerCamera.pixelRect = new Rect { x = 0, y = 0, width = 10, height = 10 };
             controllerCamera.nearClipPlane = 0.001f;
         }
@@ -106,6 +106,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
             highlight = null,
             touchpad_down = controller.touchpadTouched
         });
+        controller.SetPointer("Red Ball");
     }
 
     const float TOTAL_KEY_TIME = 0.5f;
@@ -196,5 +197,11 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 break;
             }
         }
+        controller.SetPointer(null);
+    }
+
+    public override bool CanStartTeleportAction(Controller controller)
+    {
+        return false;
     }
 }
