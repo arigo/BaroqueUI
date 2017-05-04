@@ -8,11 +8,11 @@ using UnityEngine.EventSystems;
 
 
 #if false
+
 namespace BaroqueUI
 {
-    public class BaroqueUI_Dialog : MonoBehaviour
+    public class Dialog : ControllerTracker
     {
-        public string sceneActionName = "Raycast";
         public float unitsPerMeter = 250;
 
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
@@ -78,10 +78,9 @@ namespace BaroqueUI
          */
         static Camera controllerCamera;
 
-        Dictionary<ControllerAction, ActionTracker> current_actions;
-
-        void Awake()
+        protected new void Awake()
         {
+            base.Awake();
             if (onEnable == null)     /* must be set to non-null, otherwise the dialog is disabled */
                 gameObject.SetActive(false);
         }
@@ -99,8 +98,6 @@ namespace BaroqueUI
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
                 canvas.worldCamera = controllerCamera;
 
-            current_actions = new Dictionary<ControllerAction, ActionTracker>();
-
             if (GetComponentInChildren<Collider>() == null)
             {
                 RectTransform rtr = transform as RectTransform;
@@ -113,10 +110,6 @@ namespace BaroqueUI
                 coll.center = r.center;
             }
             transform.localScale = Vector3.one / unitsPerMeter;
-
-            SceneAction.Register(sceneActionName, gameObject, 
-                buttonEnter: OnButtonEnter, buttonOver: OnButtonOver, buttonLeave: OnButtonLeave,
-                buttonDown: OnButtonDown, buttonDrag: OnButtonDrag, buttonUp: OnButtonUp);
         }
 
         public UnityAction onEnable, onDisable;
@@ -164,21 +157,30 @@ namespace BaroqueUI
             return found_any;
         }
 
-        class ActionTracker
+
+        Transform base_graphic;
+        PointerEventData pevent;
+        GameObject current_pressed;
+
+        public override void OnTriggerDown(Controller controller)
         {
-            internal ControllerAction action;
-            internal Transform base_graphic;
-            internal PointerEventData pevent;
-            internal GameObject current_pressed;
+            pevent = new PointerEventData(EventSystem.current);
+        }
 
-            internal ActionTracker(ControllerAction action, Transform transform)
-            {
-                this.action = action;
-                base_graphic = transform;
-                pevent = new PointerEventData(EventSystem.current);
-            }
+        public override void OnMoveOver(Controller controller)
+        {
+            // handle enter and exit events (highlight)
+            GameObject new_target = null;
+            if (tracker.UpdateCurrentPoint())
+                new_target = tracker.pevent.pointerCurrentRaycast.gameObject;
 
-            internal bool UpdateCurrentPoint(bool allow_out_of_bounds = false)
+            UpdateHoveringTarget(tracker, new_target);
+        }
+
+
+
+
+        internal bool UpdateCurrentPoint(bool allow_out_of_bounds = false)
             {
                 controllerCamera.transform.position = action.transform.position;
                 controllerCamera.transform.rotation = action.transform.rotation;
@@ -217,39 +219,6 @@ namespace BaroqueUI
             }
         }
 
-        ActionTracker GetTracker(ControllerAction action)
-        {
-            return current_actions[action];
-        }
-
-        ActionTracker AddTracker(ControllerAction action)
-        {
-            ActionTracker tracker = new ActionTracker(action, transform);
-            current_actions[action] = tracker;
-            return tracker;
-        }
-
-        void RemoveTracker(ControllerAction action)
-        {
-            current_actions.Remove(action);
-        }
-
-        private void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            ActionTracker tracker = AddTracker(action);
-        }
-
-        private void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            ActionTracker tracker = GetTracker(action);
-
-            // handle enter and exit events (highlight)
-            GameObject new_target = null;
-            if (tracker.UpdateCurrentPoint())
-                new_target = tracker.pevent.pointerCurrentRaycast.gameObject;
-
-            UpdateHoveringTarget(tracker, new_target);
-        }
 
         void UpdateHoveringTarget(ActionTracker tracker, GameObject new_target)
         {

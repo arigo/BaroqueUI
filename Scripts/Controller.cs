@@ -46,6 +46,11 @@ namespace BaroqueUI
             return is_grabbing && grabbing_button == btn;
         }
 
+        public void HapticPulse(int durationMicroSec = 500)
+        {
+            SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
+        }
+
         public int index { get { return controller_index; } }
 
         public static Controller GetController(int index) { return BaroqueUI.GetControllers()[index]; }

@@ -9,7 +9,6 @@ public class ColorMe : ControllerTracker
 {
     public override void OnTriggerDown(Controller controller)
     {
-        Debug.Log("ColorMe::OnTriggerDown: " + controller);
 #if false
         Material mat = GetComponent<Renderer>().material;
 
