@@ -13,8 +13,6 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
     static Camera controllerCamera;
 
-    GameObject[] pointers;
-
 
     [DllImport("user32.dll")]
     public static extern int ToUnicode(uint virtualKeyCode, uint scanCode, byte[] keyboardState,
@@ -34,8 +32,9 @@ public class KeyboardClicker : ConcurrentControllerTracker
     const int SCAN_TAB = 15;
     const int SCAN_ENTER = 28;
     const int SCAN_BACKSLASH = 43;
+    const int SCAN_ALTGR = 56;
+    const int SCAN_SPACE = 57;
     const int SCAN_EXTRA = 86;   /* non-US keyboards have an extra key here; US keyboard report the same as SCAN_BACKSLASH */
-    const int SCAN_TOTAL = 87;
 
 
     static string GetCharsFromKeys(int scancode, bool shift, bool altGr)
@@ -67,39 +66,38 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
     class KeyInfo
     {
+        /* these fields control the appearence of the key, not its behaviour */
         internal int scan_code;
-        internal int mode;
-        internal string[] texts;
+        internal string current_text;      /* what to display on the key */
+        internal string[] texts;           /* array of 3 strings [normal, shift, altgr] */
         internal Image image;
         internal Text text;
         internal float blink_end;
 
-        const float TOTAL_KEY_TIME = 0.5f;
+        internal const float TOTAL_KEY_TIME = 0.5f;
 
-        internal bool Update()
+        internal bool Update(bool fallback = false)
         {
-            if (text.text != texts[mode])
-                text.text = texts[mode];
+            bool update = text.text != current_text;
+            if (update)
+                text.text = current_text;
 
-            if (blink_end > 0)
+            update |= blink_end > 0;
+            if (update)
             {
                 float done_fraction = 1 - (blink_end - Time.time) / TOTAL_KEY_TIME;
-                Color col = Color.red;
-                switch (mode)
-                {
-                    case 1: col = new Color(1, 0.898f, 0); break;
-                    case 2: col = new Color(0, 0.710f, 1); break;
-                }
-                image.color = Color.Lerp(col, Color.white, done_fraction);
+                Color col1 = Color.red, col2 = Color.white;
+                if (current_text == "")
+                    col2 = new Color(0.9f, 0.9f, 0.9f);
+                image.color = Color.Lerp(col1, col2, done_fraction);
                 if (done_fraction >= 1)
                 {
                     blink_end = 0;
-                    mode = 0;
+                    if (fallback && current_text == texts[1])
+                        current_text = texts[0];    /* automatic fall back */
                 }
-                return true;
             }
-            else
-                return false;
+            return update;
         }
 
         internal void SetBlink(float white_fraction)
@@ -111,12 +109,13 @@ public class KeyboardClicker : ConcurrentControllerTracker
     }
 
     Dictionary<Button, KeyInfo> key_infos;
-    bool use_ctrl_alt;
 
 
     void Start()
     {
         key_infos = new Dictionary<Button, KeyInfo>();
+        Button key_altgr = null;
+        bool use_ctrl_alt = false;
 
         foreach (var btn in GetComponentsInChildren<Button>())
         {
@@ -126,9 +125,17 @@ public class KeyboardClicker : ConcurrentControllerTracker
             {
                 string text0, text1, text2;
 
-                if (scancode == SCAN_BACKSPACE || scancode == SCAN_TAB || scancode == SCAN_ENTER)
+                if (scancode == SCAN_BACKSPACE || scancode == SCAN_TAB || scancode == SCAN_ENTER || scancode == SCAN_ALTGR)
                 {
                     text0 = text1 = text2 = btn.GetComponentInChildren<Text>().text;
+                    if (scancode == SCAN_ALTGR)
+                        key_altgr = btn;
+                    if (scancode == SCAN_ENTER)
+                        text2 = "";
+                }
+                else if (scancode == SCAN_SPACE)
+                {
+                    text0 = text1 = text2 = " ";
                 }
                 else
                 {
@@ -150,12 +157,18 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 }
                 var info = new KeyInfo();
                 info.scan_code = scancode;
+                info.current_text = text0;
                 info.texts = new string[] { text0, text1, text2 };
                 info.image = btn.GetComponent<Image>();
                 info.text = btn.GetComponentInChildren<Text>();
                 info.Update();
                 key_infos[btn] = info;
             }
+        }
+        if (!use_ctrl_alt)
+        {
+            key_infos.Remove(key_altgr);
+            Destroy(key_altgr.gameObject);
         }
 
         if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
@@ -171,13 +184,6 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
         if (locals == null)
             locals = new List<Local>();
-
-        pointers = new GameObject[]
-        {
-            BaroqueUI.BaroqueUI.GetPointerObject("Red Ball"),
-            BaroqueUI.BaroqueUI.GetPointerObject("Yellow Ball"),
-            BaroqueUI.BaroqueUI.GetPointerObject("Cyan Ball"),
-        };
     }
 
     static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
@@ -211,9 +217,11 @@ public class KeyboardClicker : ConcurrentControllerTracker
         return found_any;
     }
 
-    KeyInfo FindKey(Vector3 position)
+    KeyInfo FindKey(Vector3 position, float dx = 0, float dy = 0)
     {
         position = transform.InverseTransformPoint(position);
+        position.x += dx;
+        position.y += dy;
         position.z = -20;
         controllerCamera.transform.position = transform.TransformPoint(position);
         controllerCamera.transform.rotation = transform.rotation;
@@ -239,129 +247,220 @@ public class KeyboardClicker : ConcurrentControllerTracker
     class Local
     {
         internal Controller ctrl;
-        internal KeyInfo highlight;
-        internal bool touchpad_down;
-        internal int mode;
-        internal bool show_all_keys;
+        internal int touchpad_down;        /* 0: no, 1: touched, 2: pressed */
+        internal KeyInfo altgr_touched;    /* set to the KeyInfo for the alt key when we touch it, until we release the touch */
+        internal KeyInfo just_touched;     /* set to the KeyInfo for other keys when we touch, until we either release or press the touchpad */
+        internal bool shift_outside;       /* set to true if we touch the touchpad outside of any key */
     }
     List<Local> locals;
-    int is_active;
+    int is_active;       /* set to zero when both controllers are away from the keyboard and the key blinks is done */
+    int keys_displayed;    /* mode currently displayed for all keys [0-2] */
 
     public override void OnEnter(Controller controller)
     {
         locals.Add(new Local {
             ctrl = controller,
-            highlight = null,
-            touchpad_down = controller.touchpadTouched
+            touchpad_down = controller.touchpadPressed ? 2 : controller.touchpadTouched ? 1 : 0
         });
-        controller.SetPointerPrefab(pointers[0]);
+        controller.SetPointer("Red Ball");
         is_active = 3;
+    }
+
+    void KeyTouch(Local local, KeyInfo key, bool shift)
+    {
+        if (keys_displayed < 2)
+            key.current_text = key.texts[shift ? 1 : 0];
+
+        if (key.current_text == "")    /* occurs if keys_displayed == 2 */
+            return;
+
+        key.SetBlink(0.2f);
+
+        switch (key.scan_code)
+        {
+            case SCAN_BACKSPACE:
+                int count = inputField.text.Length;
+                if (count > 0)
+                    inputField.text = inputField.text.Substring(0, count - 1);
+                break;
+
+            case SCAN_TAB:
+                inputField.text += "    ";   /* XXX */
+                break;
+
+            case SCAN_ENTER:
+                inputField.text = "";   /* XXX */
+                break;
+
+            case SCAN_ALTGR:
+                return;     /* no haptic pulse */
+
+            default:
+                inputField.text += key.current_text;
+                break;
+        }
+        local.ctrl.HapticPulse(500);
+    }
+
+    void KeyShiftingPress(Local local, KeyInfo key)
+    {
+        switch (key.scan_code)
+        {
+            case SCAN_BACKSPACE:
+            case SCAN_TAB:
+            case SCAN_ENTER:
+            case SCAN_ALTGR:
+                return;
+
+            default:
+                if (keys_displayed < 2)
+                    key.current_text = key.texts[1];
+
+                if (key.current_text == "")    /* typical if keys_displayed == 2 */
+                    return;
+
+                int count = inputField.text.Length;
+                if (count > 0)
+                    inputField.text = inputField.text.Substring(0, count - 1);  /* xxx */
+                inputField.text += key.current_text;
+                break;
+        }
+        key.SetBlink(0.15f);
+        local.ctrl.HapticPulse(900);
     }
 
     public override void OnMove(Controller[] controllers)
     {
-        UpdateKeys();
-
         foreach (var local in locals)
         {
-            KeyInfo key = local.highlight;
-            int old_mode = local.mode;
+            KeyInfo key = FindKey(local.ctrl.position);
+            if (key != null)
+                key.SetBlink(0.91f);
 
-            if (local.ctrl.touchpadTouched)
+            if (!local.ctrl.touchpadTouched)
             {
-                Vector2 xy = local.ctrl.touchpadPosition;
-                if (xy.x > 0.7f && use_ctrl_alt)
-                    local.mode = 2;
-                else if (xy.y > 0.7f)
-                    local.mode = 1;
-                else
-                    local.mode = 0;
-
-                if (key != null)
-                    key.mode = local.mode;
-
-                if (!local.touchpad_down)
+                /* Touchpad is not touched.  Cancel all state */
+                local.touchpad_down = 0;
+                local.shift_outside = false;
+                if (local.altgr_touched != null)
                 {
+                    local.altgr_touched = null;
+                    local.ctrl.GrabFromScript(false);
+                }
+                continue;
+            }
+
+            /* Touched is touched. */
+            switch (local.touchpad_down)
+            {
+                case 0:    /* touchpad was not touched previously */
+                    local.just_touched = null;
                     if (key != null)
                     {
-                        switch (key.scan_code)
+                        if (key.scan_code == SCAN_ALTGR)
                         {
-                            case SCAN_BACKSPACE:
-                                int count = inputField.text.Length;
-                                if (count > 0)
-                                    inputField.text = inputField.text.Substring(0, count - 1);
-                                break;
-
-                            case SCAN_TAB:
-                                inputField.text += "    ";   /* XXX */
-                                break;
-
-                            case SCAN_ENTER:
-                                inputField.text = "";   /* XXX */
-                                break;
-
-                            default:
-                                inputField.text += key.texts[key.mode];
-                                break;
+                            local.altgr_touched = key;
+                            local.ctrl.GrabFromScript(true);
                         }
-                        key.SetBlink(0.2f);
-                        local.ctrl.HapticPulse();
+                        else
+                            local.just_touched = key;
+
+                        KeyTouch(local, key, shift: keys_displayed == 1);
                     }
                     else
-                        local.show_all_keys = true;
-                }
-                if (local.show_all_keys)
-                {
-                    foreach (var info in key_infos.Values)
                     {
-                        info.mode = local.mode;
-                        info.SetBlink(0.93f);
+                        /* only if pressing far enough from any key */
+                        const float d = 9f;
+                        if (FindKey(local.ctrl.position, +d, +d) == null &&
+                            FindKey(local.ctrl.position, +d, -d) == null &&
+                            FindKey(local.ctrl.position, -d, +d) == null &&
+                            FindKey(local.ctrl.position, -d, -d) == null)
+                            local.shift_outside = true;
                     }
-                }
-            }
-            else
-            {
-                local.show_all_keys = false;
-                if (key == null || key.mode != local.mode)
-                    local.mode = 0;
-            }
+                    local.touchpad_down = 1;
+                    break;
 
-            local.touchpad_down = local.ctrl.touchpadTouched;
-            if (local.mode != old_mode)
-                local.ctrl.SetPointerPrefab(pointers[local.mode]);
+                case 1:    /* touchpad was already touched (but not pressed) previously */
+                    if (local.ctrl.touchpadPressed)
+                    {
+                        if (key != null)
+                        {
+                            if (local.just_touched == key)
+                                KeyShiftingPress(local, key);
+                            else
+                                KeyTouch(local, key, shift: true);
+                        }
+                        local.touchpad_down = 2;
+                    }
+                    else if (local.just_touched != key)
+                    {
+                        local.just_touched = null;
+                    }
+                    break;
+
+                case 2:     /* touchpad was pressed previously */
+                    if (!local.ctrl.touchpadPressed)
+                    {
+                        local.just_touched = null;
+                        local.touchpad_down = 1;
+                    }
+                    break;
+            }
         }
+
+        UpdateAltGr();
     }
 
-    void UpdateKeys(Controller removing = null)
+    void UpdateAltGr()
     {
+        int mode = 0;
+
         foreach (var local in locals)
         {
-            KeyInfo key = (removing == local.ctrl) ? null : FindKey(local.ctrl.position);
-            local.highlight = key;
+            if (local.altgr_touched != null)
+            {
+                local.altgr_touched.SetBlink(0.6f);
+                mode = 2;
+            }
+            else if (mode == 0 && local.shift_outside)
+                mode = 1;
+        }
 
-            if (key != null)
-                key.SetBlink(0.9f);
+        if (mode != keys_displayed)
+        {
+            foreach (var info in key_infos.Values)
+                info.current_text = info.texts[mode];
+            keys_displayed = mode;
         }
     }
+
+
+    /*float last_update = 0;*/
 
     private void Update()
     {
+        /*if (Time.time >= last_update + 0.5f)
+        {
+            last_update = Time.time;
+            string s = last_update + "     " + is_active + "  keys_displayed: " + keys_displayed;
+            foreach (var local in locals)
+                s += "  [" + local.touchpad_down + " " + (local.altgr_touched != null ? "altgr" : "") + " "
+                    + (local.just_touched != null ? "just_touched:" + local.just_touched.texts[0] : "") + " "
+                    + (local.shift_outside ? "shift_outside" : "") + "]";
+            Debug.Log(s);
+        }*/
+
         if (is_active != 0)
         {
-            bool any_update = false;
+            is_active &= ~1;
             foreach (var info in key_infos.Values)
-                any_update |= info.Update();
-            if (!any_update)
-                is_active &= ~1;
-            else
-                is_active |= 1;
+                if (info.Update(fallback: keys_displayed == 0))
+                    is_active |= 1;
         }
     }
 
     public override void OnLeave(Controller controller)
     {
-        UpdateKeys(removing: controller);
-
         for (int i = 0; i < locals.Count; i++)
         {
             if (locals[i].ctrl == controller)
@@ -370,8 +469,10 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 break;
             }
         }
+        UpdateAltGr();
         controller.SetPointer(null);
-        is_active = 1;
+        if (locals.Count == 0)
+            is_active = 1;
     }
 
     public override bool CanStartTeleportAction(Controller controller)

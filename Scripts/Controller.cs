@@ -51,6 +51,17 @@ namespace BaroqueUI
             return is_grabbing ? tracker_hover : null;
         }
 
+        public void GrabFromScript(bool active)
+        {
+            if (active && tracker_hover != null)
+            {
+                grabbing_button = null;
+                is_grabbing = true;
+            }
+            else
+                is_grabbing = false;
+        }
+
         public void HapticPulse(int durationMicroSec = 500)
         {
             SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
@@ -95,7 +106,8 @@ namespace BaroqueUI
         BaseControllerTracker tracker_hover_next;
         float tracker_hover_next_priority;
         bool is_tracking, is_clicking_now, is_grabbing;
-        EControllerButton clicking_button, grabbing_button;
+        EControllerButton clicking_button;
+        EControllerButton? grabbing_button;
 
         SteamVR_TrackedObject trackedObject;
 
@@ -164,7 +176,7 @@ namespace BaroqueUI
                 }
                 bitmask_buttons = b;
 
-                if (is_grabbing && !GetButton(grabbing_button))
+                if (is_grabbing && grabbing_button.HasValue && !GetButton(grabbing_button.Value))
                     UnGrab();
 
                 /* read the position/rotation and update the velocity estimation */
