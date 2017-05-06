@@ -7,11 +7,14 @@ using BaroqueUI;
 using UnityEngine.EventSystems;
 using System.Runtime.InteropServices;
 
-public class KeyboardClicker : ConcurrentControllerTracker
-{
-    public InputField inputField;
 
-    static Camera controllerCamera;
+public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
+{
+    public abstract void TypeKey(string key);                   /* type the given character(s) */
+    public abstract void TypeKeyReplacement(string newkey);     /* replace the most recently typed characters */
+    public virtual void TypeTab() { TypeKey(" "); }             /* tab key */
+    public abstract void TypeBackspace();                       /* backspace key */
+    public abstract void TypeEnter();                           /* enter key */
 
 
     [DllImport("user32.dll")]
@@ -34,12 +37,15 @@ public class KeyboardClicker : ConcurrentControllerTracker
     const int SCAN_BACKSLASH = 43;
     const int SCAN_ALTGR = 56;
     const int SCAN_SPACE = 57;
-    const int SCAN_EXTRA = 86;   /* non-US keyboards have an extra key here; US keyboard report the same as SCAN_BACKSLASH */
+    const int SCAN_EXTRA = 86;   /* many European keyboards have an extra key here; US keyboards report the same as SCAN_BACKSLASH */
+
+    const string DEAD_KEY = "[DEAD_KEY]";
 
 
-    static string GetCharsFromKeys(int scancode, bool shift, bool altGr)
+    static string GetCharsFromKeys(int scancode, bool shift, bool altGr, int next_scancode = 0, bool next_shift = false)
     {
-        uint keys = MapVirtualKey((uint)scancode, MAPVK_VSC_TO_VK);
+        uint key = MapVirtualKey((uint)scancode, MAPVK_VSC_TO_VK);
+        uint next_key = next_scancode > 0 ? MapVirtualKey((uint)next_scancode, MAPVK_VSC_TO_VK) : VK_SPACE;
 
         var buf = new System.Text.StringBuilder(128);
         var keyboardState = new byte[256];
@@ -50,15 +56,17 @@ public class KeyboardClicker : ConcurrentControllerTracker
             keyboardState[VK_CONTROL] = 0xff;
             keyboardState[VK_MENU] = 0xff;
         }
-        int result = ToUnicode(keys, (uint)scancode, keyboardState, buf, 128, 0);
+        int result = ToUnicode(key, (uint)scancode, keyboardState, buf, 128, 0);
         if (result == -1)
         {
-            /* dead keys seem to be stored inside Windows somewhere, so we need to clear 
-             * it out e.g. by sending a ToUnicode(VK_SPACE) */
-            keyboardState[VK_SHIFT] = 0;
+            /* dead keys seem to be stored inside Windows somewhere, so we need to clear
+             * it out in all cases.  That's why we send by default ToUnicode(VK_SPACE). */
+            keyboardState[VK_SHIFT] = (byte)(next_shift ? 0xff : 0);
             keyboardState[VK_CONTROL] = 0;
             keyboardState[VK_MENU] = 0;
-            result = ToUnicode(VK_SPACE, 0, keyboardState, buf, 128, 0);
+            result = ToUnicode(next_key, (uint)next_scancode, keyboardState, buf, 128, 0);
+            if (next_scancode == 0)
+                return DEAD_KEY + buf.ToString(0, result);
         }
         return buf.ToString(0, result);
     }
@@ -78,9 +86,10 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
         internal bool Update(bool fallback = false)
         {
-            bool update = text.text != current_text;
+            string display_text = current_text.StartsWith(DEAD_KEY) ? current_text.Substring(DEAD_KEY.Length) : current_text;
+            bool update = text.text != display_text;
             if (update)
-                text.text = current_text;
+                text.text = display_text;
 
             update |= blink_end > 0;
             if (update)
@@ -109,6 +118,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
     }
 
     Dictionary<Button, KeyInfo> key_infos;
+    static Camera controllerCamera;
 
 
     void Start()
@@ -116,6 +126,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
         key_infos = new Dictionary<Button, KeyInfo>();
         Button key_altgr = null;
         bool use_ctrl_alt = false;
+        Dictionary<int, string[]> all_regular_scancodes = new Dictionary<int, string[]>();
 
         foreach (var btn in GetComponentsInChildren<Button>())
         {
@@ -154,6 +165,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
                         continue;
                     }
                     use_ctrl_alt |= (text2 != "");
+                    all_regular_scancodes.Add(scancode, new string[] { text0, text1 });
                 }
                 var info = new KeyInfo();
                 info.scan_code = scancode;
@@ -170,6 +182,13 @@ public class KeyboardClicker : ConcurrentControllerTracker
             key_infos.Remove(key_altgr);
             Destroy(key_altgr.gameObject);
         }
+        dead_keys_combinations = new Dictionary<string, Dictionary<string, string>>();
+        foreach (var info in key_infos.Values)
+        {
+            AddDeadKeyCombination(all_regular_scancodes, info.texts[0], info.scan_code, false, false);
+            AddDeadKeyCombination(all_regular_scancodes, info.texts[1], info.scan_code, true, false);
+            AddDeadKeyCombination(all_regular_scancodes, info.texts[2], info.scan_code, false, true);
+        }
 
         if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
         {
@@ -185,6 +204,30 @@ public class KeyboardClicker : ConcurrentControllerTracker
         if (locals == null)
             locals = new List<Local>();
     }
+
+    void AddDeadKeyCombination(Dictionary<int, string[]> all_regular_scancodes, string key_text,
+                               int scan_code, bool with_shift, bool with_altgr)
+    {
+        if (!key_text.StartsWith(DEAD_KEY))
+            return;
+
+        var k = key_text.Substring(DEAD_KEY.Length);
+        dead_keys_combinations[k] = new Dictionary<string, string> {
+            { " ", k }
+        };
+        foreach (var kv in all_regular_scancodes)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                if (kv.Value[i].StartsWith(DEAD_KEY))
+                    continue;
+                string combined = GetCharsFromKeys(scan_code, with_shift, with_altgr, next_scancode: kv.Key, next_shift: i == 1);
+                if (combined != k + kv.Value[i])
+                    dead_keys_combinations[k].Add(kv.Value[i], combined);
+            }
+        }
+    }
+
 
     static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
     {
@@ -251,10 +294,19 @@ public class KeyboardClicker : ConcurrentControllerTracker
         internal KeyInfo altgr_touched;    /* set to the KeyInfo for the alt key when we touch it, until we release the touch */
         internal KeyInfo just_touched;     /* set to the KeyInfo for other keys when we touch, until we either release or press the touchpad */
         internal bool shift_outside;       /* set to true if we touch the touchpad outside of any key */
+        internal bool dead_key_touchpad_not_released;    /* set to false whenever the touchpad is released; used for dead keys */
     }
     List<Local> locals;
     int is_active;       /* set to zero when both controllers are away from the keyboard and the key blinks is done */
-    int keys_displayed;    /* mode currently displayed for all keys [0-2] */
+    int keys_displayed;    /* mode currently displayed for all keys [0 - 2] */
+    string combine_keys_displayed;    /* with 'keys_displayed', if non-null, show potential combinations from dead key */
+    KeyInfo shifting_single_key;
+
+    /* dead keys: built inside a dict mapping strings like "^" to dicts mapping "i" to "î" 
+     */
+    Dictionary<string, Dictionary<string, string>> dead_keys_combinations;
+    string dead_key_last;    /* the key last typed that is a dead key, e.g. "^" on French keyboards. */
+    int dead_key_status;    /* 0: no dead key; 1: pressing/pressed the dead key; 2: pressing/pressed the follow-up key */
 
     public override void OnEnter(Controller controller)
     {
@@ -264,6 +316,43 @@ public class KeyboardClicker : ConcurrentControllerTracker
         });
         controller.SetPointer("Red Ball");
         is_active = 3;
+    }
+
+    void KeyCombine(Local local, string k, bool replacement)
+    {
+        if (k.StartsWith(DEAD_KEY))
+        {
+            dead_key_status = (dead_key_status == 1 && !replacement) ? 0 : 1;
+            dead_key_last = k.Substring(DEAD_KEY.Length);
+            k = dead_key_last;
+            if (!replacement && dead_key_status == 1)
+                local.dead_key_touchpad_not_released = true;
+        }
+        else if (dead_key_status >= 1)
+        {
+            if (dead_key_status == 2 && !replacement)
+            {
+                dead_key_status = 0;    /* already done, we're typing the following key now */
+            }
+            else if (dead_key_status == 1 && replacement)
+            {
+                dead_key_status = 0;    /* we're replacing a dead key with a non-dead shifted key */
+            }
+            else
+            {
+                string k2;
+                if (dead_keys_combinations[dead_key_last].TryGetValue(k, out k2))
+                    TypeKeyReplacement(k2);   /* replace the dead key with k2, which is the combined character */
+                else
+                    TypeKeyReplacement(dead_key_last + k);   /* add the non-combining letter (but it can still change later) */
+                dead_key_status = 2;
+                return;
+            }
+        }
+        if (replacement)
+            TypeKeyReplacement(k);
+        else
+            TypeKey(k);    /* most common path */
     }
 
     void KeyTouch(Local local, KeyInfo key, bool shift)
@@ -279,24 +368,25 @@ public class KeyboardClicker : ConcurrentControllerTracker
         switch (key.scan_code)
         {
             case SCAN_BACKSPACE:
-                int count = inputField.text.Length;
-                if (count > 0)
-                    inputField.text = inputField.text.Substring(0, count - 1);
+                dead_key_status = 0;
+                TypeBackspace();
                 break;
 
             case SCAN_TAB:
-                inputField.text += "    ";   /* XXX */
+                dead_key_status = 0;
+                TypeTab();
                 break;
 
             case SCAN_ENTER:
-                inputField.text = "";   /* XXX */
+                dead_key_status = 0;
+                TypeEnter();
                 break;
 
             case SCAN_ALTGR:
                 return;     /* no haptic pulse */
 
             default:
-                inputField.text += key.current_text;
+                KeyCombine(local, key.current_text, replacement: false);
                 break;
         }
         local.ctrl.HapticPulse(500);
@@ -314,15 +404,15 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
             default:
                 if (keys_displayed < 2)
+                {
                     key.current_text = key.texts[1];
+                    shifting_single_key = key;
+                }
 
                 if (key.current_text == "")    /* typical if keys_displayed == 2 */
                     return;
 
-                int count = inputField.text.Length;
-                if (count > 0)
-                    inputField.text = inputField.text.Substring(0, count - 1);  /* xxx */
-                inputField.text += key.current_text;
+                KeyCombine(local, key.current_text, replacement: true);
                 break;
         }
         key.SetBlink(0.15f);
@@ -342,6 +432,8 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 /* Touchpad is not touched.  Cancel all state */
                 local.touchpad_down = 0;
                 local.shift_outside = false;
+                if (local.dead_key_touchpad_not_released)
+                    local.dead_key_touchpad_not_released = false;
                 if (local.altgr_touched != null)
                 {
                     local.altgr_touched = null;
@@ -350,7 +442,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 continue;
             }
 
-            /* Touched is touched. */
+            /* Touchpad is touched. */
             switch (local.touchpad_down)
             {
                 case 0:    /* touchpad was not touched previously */
@@ -388,7 +480,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
                             if (local.just_touched == key)
                                 KeyShiftingPress(local, key);
                             else
-                                KeyTouch(local, key, shift: true);
+                                KeyTouch(local, key, shift: !(dead_key_status == 1 && local.dead_key_touchpad_not_released));
                         }
                         local.touchpad_down = 2;
                     }
@@ -426,12 +518,29 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 mode = 1;
         }
 
-        if (mode != keys_displayed)
+        string combine = null;
+        if (dead_key_status == 1 && dead_keys_combinations.ContainsKey(dead_key_last))
+            combine = dead_key_last;
+
+        if (mode != keys_displayed || combine != combine_keys_displayed)
         {
             foreach (var info in key_infos.Values)
-                info.current_text = info.texts[mode];
+            {
+                if (info == shifting_single_key)
+                    continue;
+                string k = info.texts[mode];
+                if (combine != null && dead_keys_combinations[combine].ContainsKey(k))
+                {
+                    string k2 = dead_keys_combinations[combine][k];
+                    if (!k2.EndsWith(k))
+                        k = k2;
+                }
+                info.current_text = k;
+            }
             keys_displayed = mode;
+            combine_keys_displayed = combine;
         }
+        shifting_single_key = null;
     }
 
 
@@ -478,5 +587,49 @@ public class KeyboardClicker : ConcurrentControllerTracker
     public override bool CanStartTeleportAction(Controller controller)
     {
         return false;
+    }
+}
+
+
+public class KeyboardClicker : BaseKeyboardClicker
+{
+    public Text inputFieldText;
+    string last_typed;
+
+    public override void TypeKey(string key)
+    {
+        inputFieldText.text += key;
+        last_typed = key;
+    }
+
+    public override void TypeKeyReplacement(string newkey)
+    {
+        string txt = inputFieldText.text;
+        if (last_typed != null && txt.EndsWith(last_typed))
+            txt = txt.Substring(0, txt.Length - last_typed.Length);
+        txt += newkey;
+        inputFieldText.text = txt;
+        last_typed = newkey;
+    }
+
+    public override void TypeBackspace()
+    {
+        string txt = inputFieldText.text;
+        if (last_typed != null && txt.EndsWith(last_typed))
+            txt = txt.Substring(0, txt.Length - last_typed.Length);
+        else if (txt.Length > 0)
+            txt = txt.Substring(0, txt.Length - 1);
+        else
+            return;
+
+        inputFieldText.text = txt;
+        last_typed = null;
+    }
+
+    public override void TypeEnter()
+    {
+        inputFieldText.text = "";
+        last_typed = null;
+        /* XXX fire an event? */
     }
 }
