@@ -67,21 +67,29 @@ namespace BaroqueUI
             SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
         }
 
-        public void SetPointer(string pointer_name)
+        public GameObject SetPointer(string pointer_name)
         {
-            SetPointerPrefab(pointer_name != null ? BaroqueUI.GetPointerObject(pointer_name) : null);
+            return SetPointerPrefab(pointer_name != null ? BaroqueUI.GetPointerObject(pointer_name) : null);
         }
 
-        public void SetPointerPrefab(GameObject prefab)
+        public GameObject SetPointerPrefab(GameObject prefab)
         {
-            if (pointer_object != null)
-                Destroy(pointer_object);
-            if (prefab == null)
-                pointer_object = null;
-            else {
-                pointer_object = Instantiate(prefab, transform);
-                pointer_object.transform.localPosition = POS_TO_CURSOR;
+            if (pointer_object_prefab != prefab)
+            {
+                if (pointer_object != null)
+                    Destroy(pointer_object);
+
+                if (prefab == null)
+                    pointer_object = null;
+                else
+                {
+                    pointer_object = Instantiate(prefab, transform);
+                    pointer_object.transform.localPosition = POS_TO_CURSOR;
+                    pointer_object.transform.localRotation = Quaternion.identity;
+                }
+                pointer_object_prefab = prefab;
             }
+            return pointer_object;
         }
 
         public int index { get { return controller_index; } }
@@ -100,7 +108,7 @@ namespace BaroqueUI
         Vector3 current_position;
         Quaternion current_rotation;
         BaseControllerTracker tracker_hover;
-        GameObject pointer_object;
+        GameObject pointer_object, pointer_object_prefab;
         int controller_index;
 
         BaseControllerTracker tracker_hover_next;

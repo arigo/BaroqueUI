@@ -7,12 +7,11 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 
 
-#if false
-
 namespace BaroqueUI
 {
     public class Dialog : ControllerTracker
     {
+        public bool alreadyPositioned = false;
         public float unitsPerMeter = 250;
 
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
@@ -72,46 +71,35 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
-        /* Gross hacks ahead: the Canvas UI objects require a camera when doing a Raycast().
-         * This "camera" is set up to "look" from the controller's point of view.  This
-         * is inspired from https://github.com/VREALITY/ViveUGUIModule.
-         */
-        static Camera controllerCamera;
-
         protected new void Awake()
         {
             base.Awake();
-            if (onEnable == null)     /* must be set to non-null, otherwise the dialog is disabled */
+            if (!alreadyPositioned)
                 gameObject.SetActive(false);
         }
 
         void Start()
         {
-            if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
-            {
-                controllerCamera = new GameObject("Controller UI Camera").AddComponent<Camera>();
-                controllerCamera.clearFlags = CameraClearFlags.Nothing; //CameraClearFlags.Depth;
-                controllerCamera.cullingMask = 0; // 1 << LayerMask.NameToLayer("UI");
-                controllerCamera.pixelRect = new Rect { x=0, y=0, width=10, height=10 };
-                controllerCamera.nearClipPlane = 0.001f;
-            }
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
-                canvas.worldCamera = controllerCamera;
+                canvas.worldCamera = BaroqueUI.GetControllerCamera();
+
+            if (!alreadyPositioned)
+                transform.localScale = Vector3.one / unitsPerMeter;
 
             if (GetComponentInChildren<Collider>() == null)
             {
                 RectTransform rtr = transform as RectTransform;
                 Rect r = rtr.rect;
+                float zscale = transform.InverseTransformVector(transform.forward * 0.108f).magnitude;
 
                 BoxCollider coll = gameObject.AddComponent<BoxCollider>();
                 coll.isTrigger = true;
-                coll.size = new Vector3(r.width, r.height, 1);   /* XXX check what occurs if the Canvas contains components
-                                                                    that have a Z coordinate that differs a lot from 0 */
-                coll.center = r.center;
+                coll.size = new Vector3(r.width, r.height, zscale);
+                coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
             }
-            transform.localScale = Vector3.one / unitsPerMeter;
         }
 
+#if false
         public UnityAction onEnable, onDisable;
 
         void OnEnable()
@@ -125,6 +113,7 @@ namespace BaroqueUI
             if (onDisable != null)
                 onDisable();
         }
+#endif
 
         static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
         {
@@ -158,11 +147,10 @@ namespace BaroqueUI
         }
 
 
-        Transform base_graphic;
         PointerEventData pevent;
         GameObject current_pressed;
 
-        public override void OnTriggerDown(Controller controller)
+        public override void OnEnter(Controller controller)
         {
             pevent = new PointerEventData(EventSystem.current);
         }
@@ -171,158 +159,157 @@ namespace BaroqueUI
         {
             // handle enter and exit events (highlight)
             GameObject new_target = null;
-            if (tracker.UpdateCurrentPoint())
-                new_target = tracker.pevent.pointerCurrentRaycast.gameObject;
+            if (UpdateCurrentPoint(controller))
+                new_target = pevent.pointerCurrentRaycast.gameObject;
 
-            UpdateHoveringTarget(tracker, new_target);
+            UpdateHoveringTarget(new_target);
+
+            float distance_to_plane = transform.InverseTransformPoint(controller.position).z * -0.06f;
+            if (distance_to_plane < 1)
+                distance_to_plane = 1;
+            GameObject go = controller.SetPointer("Cursor");  /* XXX */
+            go.transform.rotation = transform.rotation;
+            go.transform.localScale = new Vector3(1, 1, distance_to_plane);
         }
 
-
-
-
-        internal bool UpdateCurrentPoint(bool allow_out_of_bounds = false)
-            {
-                controllerCamera.transform.position = action.transform.position;
-                controllerCamera.transform.rotation = action.transform.rotation;
-
-                pevent.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
-
-                List<RaycastResult> results = new List<RaycastResult>();
-                foreach (var raycaster in base_graphic.GetComponentsInChildren<GraphicRaycaster>())
-                    raycaster.Raycast(pevent, results);
-
-                RaycastResult rr;
-                if (!BestRaycastResult(results, out rr))
-                {
-                    if (allow_out_of_bounds)
-                    {
-                        /* return a "raycast" result that simply projects on the canvas plane Z=0 */
-                        Plane plane = new Plane(base_graphic.transform.forward, base_graphic.transform.position);
-                        Ray ray = new Ray(action.transform.position, action.transform.forward);
-                        float enter;
-                        if (plane.Raycast(ray, out enter))
-                        {
-                            pevent.pointerCurrentRaycast = new RaycastResult
-                            {
-                                depth = -1,
-                                distance = enter,
-                                worldNormal = base_graphic.transform.forward,
-                                worldPosition = ray.GetPoint(enter),
-                            };
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-                pevent.pointerCurrentRaycast = rr;
-                return rr.gameObject != null;
-            }
-        }
-
-
-        void UpdateHoveringTarget(ActionTracker tracker, GameObject new_target)
+        bool UpdateCurrentPoint(Controller controller, bool allow_out_of_bounds = false)
         {
-            if (new_target == tracker.pevent.pointerEnter)
+            BaroqueUI.MoveControllerCamera(controller.position, transform.forward, pevent);
+
+            List<RaycastResult> results = new List<RaycastResult>();
+            foreach (var raycaster in GetComponentsInChildren<GraphicRaycaster>())
+                raycaster.Raycast(pevent, results);
+
+            RaycastResult rr;
+            if (!BestRaycastResult(results, out rr))
+            {
+                if (allow_out_of_bounds)
+                {
+                    /* return a "raycast" result that simply projects on the canvas plane Z=0 */
+                    /* (xxx could use Vector3.ProjectOnPlane(); this version is more flexible in case
+                       we want again a ray that is not perpendicular) */
+                    Plane plane = new Plane(transform.forward, transform.position);
+                    Ray ray = new Ray(controller.position, transform.forward);
+                    float enter;
+                    if (plane.Raycast(ray, out enter))
+                    {
+                        pevent.pointerCurrentRaycast = new RaycastResult
+                        {
+                            depth = -1,
+                            distance = enter,
+                            worldNormal = transform.forward,
+                            worldPosition = ray.GetPoint(enter),
+                        };
+                        return true;
+                    }
+                }
+                return false;
+            }
+            pevent.pointerCurrentRaycast = rr;
+            return rr.gameObject != null;
+        }
+
+
+        void UpdateHoveringTarget(GameObject new_target)
+        {
+            if (new_target == pevent.pointerEnter)
                 return;    /* already up-to-date */
 
             /* pop off any hovered objects from the stack, as long as they are not parents of 'new_target' */
-            while (tracker.pevent.hovered.Count > 0)
+            while (pevent.hovered.Count > 0)
             {
-                GameObject h = tracker.pevent.hovered[tracker.pevent.hovered.Count - 1];
+                GameObject h = pevent.hovered[pevent.hovered.Count - 1];
                 if (!h)
                 {
-                    tracker.pevent.hovered.RemoveAt(tracker.pevent.hovered.Count - 1);
+                    pevent.hovered.RemoveAt(pevent.hovered.Count - 1);
                     continue;
                 }
                 if (new_target != null && new_target.transform.IsChildOf(h.transform))
                     break;
-                tracker.pevent.hovered.RemoveAt(tracker.pevent.hovered.Count - 1);
-                ExecuteEvents.Execute(h, tracker.pevent, ExecuteEvents.pointerExitHandler);
+                pevent.hovered.RemoveAt(pevent.hovered.Count - 1);
+                ExecuteEvents.Execute(h, pevent, ExecuteEvents.pointerExitHandler);
             }
 
             /* enter and push any new object going to 'new_target', in order from outside to inside */
-            tracker.pevent.pointerEnter = new_target;
+            pevent.pointerEnter = new_target;
             if (new_target != null)
-                EnterAndPush(tracker.pevent, new_target.transform, tracker.pevent.hovered.Count == 0 ? transform :
-                              tracker.pevent.hovered[tracker.pevent.hovered.Count - 1].transform);
+                EnterAndPush(new_target.transform, pevent.hovered.Count == 0 ? transform :
+                              pevent.hovered[pevent.hovered.Count - 1].transform);
         }
 
-        static void EnterAndPush(PointerEventData pevent, Transform new_target_transform, Transform limit)
+        void EnterAndPush(Transform new_target_transform, Transform limit)
         {
             if (new_target_transform != limit)
             {
-                EnterAndPush(pevent, new_target_transform.parent, limit);
+                EnterAndPush(new_target_transform.parent, limit);
                 ExecuteEvents.Execute(new_target_transform.gameObject, pevent, ExecuteEvents.pointerEnterHandler);
                 pevent.hovered.Add(new_target_transform.gameObject);
             }
         }
 
-        private void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
+        public override void OnLeave(Controller controller)
         {
-            UpdateHoveringTarget(GetTracker(action), null);
-            RemoveTracker(action);
+            UpdateHoveringTarget(null);
+            pevent = null;
+            controller.SetPointer(null);
         }
 
-        private void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
+        public override void OnTriggerDown(Controller controller)
         {
-            ActionTracker tracker = GetTracker(action);
-            if (tracker.UpdateCurrentPoint())
+            if (UpdateCurrentPoint(controller))
             {
-                PointerEventData pevent = tracker.pevent;
                 pevent.pressPosition = pevent.position;
                 pevent.pointerPressRaycast = pevent.pointerCurrentRaycast;
                 pevent.pointerPress = null;
 
                 GameObject target = pevent.pointerPressRaycast.gameObject;
-                tracker.current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerDownHandler);
+                current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerDownHandler);
                 
-                if (tracker.current_pressed == null)
+                if (current_pressed != null)
                 {
-                    // some UI elements might only have click handler and not pointer down handler
-                    tracker.current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerClickHandler);
+                    ExecuteEvents.Execute(current_pressed, pevent, ExecuteEvents.beginDragHandler);
+                    pevent.pointerDrag = current_pressed;
                 }
                 else
                 {
-                    // we want to do click on button down at same time, unlike regular mouse processing
-                    // which does click when mouse goes up over same object it went down on
-                    // reason to do this is head tracking might be jittery and this makes it easier to click buttons
-                    ExecuteEvents.Execute(tracker.current_pressed, pevent, ExecuteEvents.pointerClickHandler);
-                }
-
-                if (tracker.current_pressed != null)
-                {
-                    ExecuteEvents.Execute(tracker.current_pressed, pevent, ExecuteEvents.beginDragHandler);
-                    pevent.pointerDrag = tracker.current_pressed;
+                    /* some objects have only a pointerClickHandler */
+                    current_pressed = target;
+                    pevent.pointerDrag = null;
                 }
             }
         }
 
-        private void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
+        public override void OnTriggerDrag(Controller controller)
         {
-            ActionTracker tracker = GetTracker(action);
-            if (tracker.current_pressed != null && tracker.UpdateCurrentPoint(allow_out_of_bounds: true))
+            if (UpdateCurrentPoint(controller, allow_out_of_bounds: true))
             {
-                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.dragHandler);
+                if (pevent.pointerDrag != null)
+                    ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.dragHandler);
             }
         }
 
-        private void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
+        public override void OnTriggerUp(Controller controller)
         {
-            ActionTracker tracker = GetTracker(action);
-            if (tracker.current_pressed != null)
-            {
-                bool in_bounds = tracker.UpdateCurrentPoint();
+            bool in_bounds = UpdateCurrentPoint(controller);
 
-                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.endDragHandler);
+            if (pevent.pointerDrag != null)
+            {
+                ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.endDragHandler);
                 if (in_bounds)
                 {
-                    ExecuteEvents.ExecuteHierarchy(tracker.current_pressed, tracker.pevent, ExecuteEvents.dropHandler);
+                    ExecuteEvents.ExecuteHierarchy(pevent.pointerDrag, pevent, ExecuteEvents.dropHandler);
                 }
-                ExecuteEvents.Execute(tracker.current_pressed, tracker.pevent, ExecuteEvents.pointerUpHandler);
-
-                tracker.current_pressed = null;
+                ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.pointerUpHandler);
+                pevent.pointerDrag = null;
             }
+
+            if (in_bounds)
+                ExecuteEvents.Execute(current_pressed, pevent, ExecuteEvents.pointerClickHandler);
+        }
+
+        public override bool CanStartTeleportAction(Controller controller)
+        {
+            return false;
         }
     }
 }
-#endif

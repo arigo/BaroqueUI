@@ -8,13 +8,16 @@ using UnityEngine.EventSystems;
 using System.Runtime.InteropServices;
 
 
-public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
+public class KeyboardClicker : ConcurrentControllerTracker
 {
-    public abstract void TypeKey(string key);                   /* type the given character(s) */
-    public abstract void TypeKeyReplacement(string newkey);     /* replace the most recently typed characters */
-    public virtual void TypeTab() { TypeKey(" "); }             /* tab key */
-    public abstract void TypeBackspace();                       /* backspace key */
-    public abstract void TypeEnter();                           /* enter key */
+    /* messages sent to keyboardHandler with SendMessage:
+        TypeKey(string key);                   -- type the given character(s)
+        TypeKeyReplacement(string newkey);     -- replace the most recently typed characters
+        TypeTab();                             -- tab key
+        TypeBackspace();                       -- backspace key
+        TypeEnter();                           -- enter key 
+     */
+    public GameObject keyboardHandler;
 
 
     [DllImport("user32.dll")]
@@ -123,8 +126,6 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
     }
 
     Dictionary<Button, KeyInfo> key_infos;
-    static Camera controllerCamera;
-
 
     void Start()
     {
@@ -196,19 +197,10 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
             AddDeadKeyCombination(all_regular_scancodes, info.texts[2], info.scan_code, false, true);
         }
 
-        if (controllerCamera == null || !controllerCamera.gameObject.activeInHierarchy)
-        {
-            controllerCamera = new GameObject("Controller Keyboard Camera").AddComponent<Camera>();
-            controllerCamera.clearFlags = CameraClearFlags.Nothing;
-            controllerCamera.cullingMask = 0;
-            controllerCamera.pixelRect = new Rect { x = 0, y = 0, width = 10, height = 10 };
-            controllerCamera.nearClipPlane = 0.001f;
-        }
         foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
-            canvas.worldCamera = controllerCamera;
+            canvas.worldCamera = BaroqueUI.BaroqueUI.GetControllerCamera();
 
-        if (locals == null)
-            locals = new List<Local>();
+        locals = new List<Local>();
     }
 
     void AddDeadKeyCombination(Dictionary<int, string[]> all_regular_scancodes, string key_text,
@@ -270,11 +262,8 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
         position.x += dx;
         position.y += dy;
         position.z = -20;
-        controllerCamera.transform.position = transform.TransformPoint(position);
-        controllerCamera.transform.rotation = transform.rotation;
 
-        PointerEventData pevent = new PointerEventData(EventSystem.current);
-        pevent.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
+        var pevent = BaroqueUI.BaroqueUI.MoveControllerCamera(transform.TransformPoint(position), transform.forward);
 
         List<RaycastResult> results = new List<RaycastResult>();
         foreach (var raycaster in GetComponentsInChildren<GraphicRaycaster>())
@@ -322,6 +311,21 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
         is_active = 3;
     }
 
+    void SendTypeKey(string key)
+    {
+        keyboardHandler.SendMessage("TypeKey", key, SendMessageOptions.RequireReceiver);
+    }
+
+    void SendTypeKeyReplacement(string newkey)
+    {
+        keyboardHandler.SendMessage("TypeKeyReplacement", newkey, SendMessageOptions.RequireReceiver);
+    }
+
+    void SendTypeBackspace()
+    {
+        keyboardHandler.SendMessage("TypeBackspace", null, SendMessageOptions.RequireReceiver);
+    }
+
     void KeyCombine(Local local, string k, bool replacement)
     {
         if (k.StartsWith(DEAD_KEY))
@@ -346,17 +350,17 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
             {
                 string k2;
                 if (dead_keys_combinations[dead_key_last].TryGetValue(k, out k2))
-                    TypeKeyReplacement(k2);   /* replace the dead key with k2, which is the combined character */
+                    SendTypeKeyReplacement(k2);   /* replace the dead key with k2, which is the combined character */
                 else
-                    TypeKeyReplacement(dead_key_last + k);   /* add the non-combining letter (but it can still change later) */
+                    SendTypeKeyReplacement(dead_key_last + k);   /* add the non-combining letter (but it can still change later) */
                 dead_key_status = 2;
                 return;
             }
         }
         if (replacement)
-            TypeKeyReplacement(k);
+            SendTypeKeyReplacement(k);
         else
-            TypeKey(k);    /* most common path */
+            SendTypeKey(k);    /* most common path */
     }
 
     void KeyTouch(Local local, KeyInfo key, bool shift)
@@ -373,17 +377,17 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
         {
             case SCAN_BACKSPACE:
                 dead_key_status = 0;
-                TypeBackspace();
+                SendTypeBackspace();
                 break;
 
             case SCAN_TAB:
                 dead_key_status = 0;
-                TypeTab();
+                SendTypeKey("\t");
                 break;
 
             case SCAN_ENTER:
                 dead_key_status = 0;
-                TypeEnter();
+                SendTypeKey("\n");
                 break;
 
             case SCAN_ALTGR:
@@ -550,7 +554,7 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
 
     /*float last_update = 0;*/
 
-    private void Update()
+    void Update()
     {
         /*if (Time.time >= last_update + 0.5f)
         {
@@ -591,49 +595,5 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
     public override bool CanStartTeleportAction(Controller controller)
     {
         return false;
-    }
-}
-
-
-public class KeyboardClicker : BaseKeyboardClicker
-{
-    public Text inputFieldText;
-    string last_typed;
-
-    public override void TypeKey(string key)
-    {
-        inputFieldText.text += key;
-        last_typed = key;
-    }
-
-    public override void TypeKeyReplacement(string newkey)
-    {
-        string txt = inputFieldText.text;
-        if (last_typed != null && txt.EndsWith(last_typed))
-            txt = txt.Substring(0, txt.Length - last_typed.Length);
-        txt += newkey;
-        inputFieldText.text = txt;
-        last_typed = newkey;
-    }
-
-    public override void TypeBackspace()
-    {
-        string txt = inputFieldText.text;
-        if (last_typed != null && txt.EndsWith(last_typed))
-            txt = txt.Substring(0, txt.Length - last_typed.Length);
-        else if (txt.Length > 0)
-            txt = txt.Substring(0, txt.Length - 1);
-        else
-            return;
-
-        inputFieldText.text = txt;
-        last_typed = null;
-    }
-
-    public override void TypeEnter()
-    {
-        inputFieldText.text = "";
-        last_typed = null;
-        /* XXX fire an event? */
     }
 }
