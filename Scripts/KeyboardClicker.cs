@@ -29,7 +29,6 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
     const int VK_SHIFT = 0x10;
     const int VK_CONTROL = 0x11;
     const int VK_MENU = 0x12;
-    const int VK_SPACE = 0x20;
 
     const int SCAN_BACKSPACE = 14;
     const int SCAN_TAB = 15;
@@ -45,7 +44,7 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
     static string GetCharsFromKeys(int scancode, bool shift, bool altGr, int next_scancode = 0, bool next_shift = false)
     {
         uint key = MapVirtualKey((uint)scancode, MAPVK_VSC_TO_VK);
-        uint next_key = next_scancode > 0 ? MapVirtualKey((uint)next_scancode, MAPVK_VSC_TO_VK) : VK_SPACE;
+        uint next_key = next_scancode > 0 ? MapVirtualKey((uint)next_scancode, MAPVK_VSC_TO_VK) : key;
 
         var buf = new System.Text.StringBuilder(128);
         var keyboardState = new byte[256];
@@ -60,13 +59,19 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
         if (result == -1)
         {
             /* dead keys seem to be stored inside Windows somewhere, so we need to clear
-             * it out in all cases.  That's why we send by default ToUnicode(VK_SPACE). */
-            keyboardState[VK_SHIFT] = (byte)(next_shift ? 0xff : 0);
-            keyboardState[VK_CONTROL] = 0;
-            keyboardState[VK_MENU] = 0;
-            result = ToUnicode(next_key, (uint)next_scancode, keyboardState, buf, 128, 0);
+             * it out in all cases.  That's why we send by default the dead key twice. */
             if (next_scancode == 0)
-                return DEAD_KEY + buf.ToString(0, result);
+            {
+                ToUnicode(key, (uint)scancode, keyboardState, buf, 128, 0);
+                return DEAD_KEY + buf.ToString(0, 1);
+            }
+            else
+            {
+                keyboardState[VK_SHIFT] = (byte)(next_shift ? 0xff : 0);
+                keyboardState[VK_CONTROL] = 0;
+                keyboardState[VK_MENU] = 0;
+                result = ToUnicode(next_key, (uint)next_scancode, keyboardState, buf, 128, 0);
+            }
         }
         return buf.ToString(0, result);
     }
@@ -147,6 +152,7 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
                 else if (scancode == SCAN_SPACE)
                 {
                     text0 = text1 = text2 = " ";
+                    all_regular_scancodes.Add(scancode, new string[] { text0, text1 });
                 }
                 else
                 {
@@ -212,18 +218,16 @@ public abstract class BaseKeyboardClicker : ConcurrentControllerTracker
             return;
 
         var k = key_text.Substring(DEAD_KEY.Length);
-        dead_keys_combinations[k] = new Dictionary<string, string> {
-            { " ", k }
-        };
+        dead_keys_combinations[k] = new Dictionary<string, string>();
         foreach (var kv in all_regular_scancodes)
         {
-            for (int i = 0; i < 2; i++)
+            for (int i = 1; i >= 0; i--)
             {
                 if (kv.Value[i].StartsWith(DEAD_KEY))
                     continue;
                 string combined = GetCharsFromKeys(scan_code, with_shift, with_altgr, next_scancode: kv.Key, next_shift: i == 1);
                 if (combined != k + kv.Value[i])
-                    dead_keys_combinations[k].Add(kv.Value[i], combined);
+                    dead_keys_combinations[k][kv.Value[i]] = combined;
             }
         }
     }
