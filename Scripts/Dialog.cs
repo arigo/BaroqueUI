@@ -71,20 +71,23 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
-        protected new void Awake()
+        public void DisplayDialog()
         {
-            base.Awake();
-            if (!alreadyPositioned)
-                gameObject.SetActive(false);
+            transform.localScale = Vector3.one / unitsPerMeter;
+            alreadyPositioned = true;
+            gameObject.SetActive(true);
         }
 
         void Start()
         {
+            if (!alreadyPositioned)
+            {
+                gameObject.SetActive(false);
+                return;
+            }
+
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
                 canvas.worldCamera = BaroqueUI.GetControllerCamera();
-
-            if (!alreadyPositioned)
-                transform.localScale = Vector3.one / unitsPerMeter;
 
             if (GetComponentInChildren<Collider>() == null)
             {

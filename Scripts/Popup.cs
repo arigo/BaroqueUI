@@ -1,38 +1,46 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
-using UnityEngine.EventSystems;
 
-
-#if false
 
 namespace BaroqueUI
 {
     public abstract class BasePopup
     {
-        public abstract BaroqueUI_Dialog BuildDialog();
+        public abstract Dialog BuildDialog();
 
-        public void ShowPopup(ControllerAction action, ControllerSnapshot snapshot)
+        static GameObject dialogShown;   /* a single one for now */
+
+        public void ShowPopup(Controller ctr, ref GameObject shown)
         {
-            BaroqueUI_Dialog dialog = BuildDialog();
+            bool should_hide = false;
+            if (dialogShown != null && dialogShown)
+            {
+                should_hide = (shown == dialogShown);
+                Object.Destroy(dialogShown);
+            }
+            shown = dialogShown = null;
+
+            if (should_hide)
+                return;
+
+            Dialog dialog = BuildDialog();
             Transform transform = dialog.transform;
 
-            Transform ctr = action.transform;
-            Vector3 head_forward = ctr.position - snapshot.HeadObject().transform.position;
-            Vector3 forward = ctr.forward + head_forward.normalized;
+            Vector3 head_forward = ctr.position - BaroqueUI.GetHeadTransform().position;
+            Vector3 forward = ctr.transform.forward + head_forward.normalized;
             forward.y = 0;
             transform.forward = forward;
             transform.position = ctr.position + 0.15f * transform.forward;
 
-            dialog.onEnable = () => dialog.sceneActionName = TempRaycastAction.EnableTempRaycast(action, dialog.gameObject);
-            dialog.onDisable = () => TempRaycastAction.DisableTempRaycast(action, dialog.sceneActionName);
-            dialog.gameObject.SetActive(true);
+            dialog.DisplayDialog();
+            shown = dialogShown = dialog.gameObject;
         }
     }
 
+#if false
     internal class TempRaycastAction : RaycastAction
     {
         static long action_num;
@@ -102,13 +110,14 @@ namespace BaroqueUI
             return hover;
         }
     }
+#endif
 
 
     public class Popup : BasePopup
     {
-        public BaroqueUI_Dialog dialog;
+        public Dialog dialog;
 
-        public Popup(BaroqueUI_Dialog dialog_prefab)
+        public Popup(Dialog dialog_prefab)
         {
             dialog = UnityEngine.Object.Instantiate(dialog_prefab);
         }
@@ -123,7 +132,7 @@ namespace BaroqueUI
             return (T)dialog.Get(widget_name);
         }
 
-        public override BaroqueUI_Dialog BuildDialog()
+        public override Dialog BuildDialog()
         {
             return dialog;
         }
@@ -167,7 +176,7 @@ namespace BaroqueUI
             return menu_items.GetEnumerator();
         }
 
-        public override BaroqueUI_Dialog BuildDialog()
+        public override Dialog BuildDialog()
         {
             const float OVERLAP = 2;
 
@@ -196,8 +205,7 @@ namespace BaroqueUI
                     });
                 }
             }
-            return menu.GetComponent<BaroqueUI_Dialog>();
+            return menu.GetComponent<Dialog>();
         }
     }
 }
-#endif

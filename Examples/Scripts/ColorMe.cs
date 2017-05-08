@@ -7,9 +7,10 @@ using BaroqueUI;
 
 public class ColorMe : ControllerTracker
 {
+    GameObject shown;
+
     public override void OnTriggerDown(Controller controller)
     {
-#if false
         Material mat = GetComponent<Renderer>().material;
 
         var menu = new Menu {
@@ -18,7 +19,6 @@ public class ColorMe : ControllerTracker
             { "Blue", () => mat.color = Color.blue},
             { "White", () => mat.color = Color.white},
         };
-        menu.ShowPopup(controller);
-#endif
+        menu.ShowPopup(controller, ref shown);
     }
 }
