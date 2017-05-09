@@ -12,7 +12,7 @@ namespace BaroqueUI
     public class Dialog : ControllerTracker
     {
         public bool alreadyPositioned = false;
-        public float unitsPerMeter = 250;
+        public float unitsPerMeter = 400;
 
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
          * It could also be done using a class hierarchy but it feels like it would be pages longer. */
@@ -47,6 +47,15 @@ namespace BaroqueUI
                 return new WidgetDescr() {
                     getter = () => text.text,
                     setter = (value) => text.text = (string)value,
+                };
+
+            InputField inputField = tr.GetComponent<InputField>();
+            if (inputField != null)
+                return new WidgetDescr() {
+                    getter = () => inputField.text,
+                    setter = (value) => inputField.text = (string)value,
+                    detach = () => inputField.onEndEdit.RemoveAllListeners(),
+                    attach = (callback) => inputField.onEndEdit.AddListener((UnityAction<string>)callback),
                 };
 
             throw new NotImplementedException(widget_name);
@@ -89,6 +98,12 @@ namespace BaroqueUI
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
                 canvas.worldCamera = BaroqueUI.GetControllerCamera();
 
+            foreach (InputField inputField in GetComponentsInChildren<InputField>())
+            {
+                if (inputField.GetComponent<KeyboardActivator>() == null)
+                    inputField.gameObject.AddComponent<KeyboardActivator>();
+            }
+
             if (GetComponentInChildren<Collider>() == null)
             {
                 RectTransform rtr = transform as RectTransform;
@@ -99,6 +114,28 @@ namespace BaroqueUI
                 coll.isTrigger = true;
                 coll.size = new Vector3(r.width, r.height, zscale);
                 coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
+            }
+        }
+
+        void OnEnable()
+        {
+            foreach (var selectable in GetComponentsInChildren<Selectable>())
+            {
+                if (selectable.interactable)
+                {
+                    StartCoroutine(SetSelected(selectable));
+                    break;
+                }
+            }
+        }
+
+        IEnumerator SetSelected(Selectable selectable)
+        {
+            yield return new WaitForSecondsRealtime(0.1f);   /* doesn't work if done immediately :-( */
+            if (selectable && selectable.isActiveAndEnabled)
+            {
+                EventSystem.current.SetSelectedGameObject(selectable.gameObject, null);
+                selectable.Select();
             }
         }
 

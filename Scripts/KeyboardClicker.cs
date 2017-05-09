@@ -13,11 +13,12 @@ public class KeyboardClicker : ConcurrentControllerTracker
     /* messages sent to keyboardHandler with SendMessage:
         TypeKey(string key);                   -- type the given character(s)
         TypeKeyReplacement(string newkey);     -- replace the most recently typed characters
-        TypeTab();                             -- tab key
         TypeBackspace();                       -- backspace key
-        TypeEnter();                           -- enter key 
      */
     public GameObject keyboardHandler;
+    public bool enableTabKey = true;
+    public bool enableEnterKey = true;
+    public bool enableEscKey = false;
 
 
     [DllImport("user32.dll")]
@@ -33,6 +34,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
     const int VK_CONTROL = 0x11;
     const int VK_MENU = 0x12;
 
+    const int SCAN_ESC = 1;
     const int SCAN_BACKSPACE = 14;
     const int SCAN_TAB = 15;
     const int SCAN_ENTER = 28;
@@ -142,8 +144,16 @@ public class KeyboardClicker : ConcurrentControllerTracker
             {
                 string text0, text1, text2;
 
-                if (scancode == SCAN_BACKSPACE || scancode == SCAN_TAB || scancode == SCAN_ENTER || scancode == SCAN_ALTGR)
+                if (scancode == SCAN_BACKSPACE || scancode == SCAN_TAB || scancode == SCAN_ENTER || 
+                    scancode == SCAN_ALTGR ||scancode == SCAN_ESC)
                 {
+                    if (scancode == SCAN_TAB && !enableTabKey ||
+                        scancode == SCAN_ENTER && !enableEnterKey ||
+                        scancode == SCAN_ESC && !enableEscKey)
+                    {
+                        Destroy(btn.gameObject);
+                        continue;
+                    }
                     text0 = text1 = text2 = btn.GetComponentInChildren<Text>().text;
                     if (scancode == SCAN_ALTGR)
                         key_altgr = btn;
@@ -390,6 +400,11 @@ public class KeyboardClicker : ConcurrentControllerTracker
                 SendTypeKey("\n");
                 break;
 
+            case SCAN_ESC:
+                dead_key_status = 0;
+                SendTypeKey("\x1b");
+                break;
+
             case SCAN_ALTGR:
                 return;     /* no haptic pulse */
 
@@ -595,5 +610,137 @@ public class KeyboardClicker : ConcurrentControllerTracker
     public override bool CanStartTeleportAction(Controller controller)
     {
         return false;
+    }
+
+    public override float GetPriority(Controller controller)
+    {
+        return 200;
+    }
+}
+
+
+internal class KeyboardActivator : MonoBehaviour, ISelectHandler, IDeselectHandler
+{
+    public KeyboardClicker keyboard;
+    string original_text;
+    string last_typed;
+    int last_typed_pos;
+
+    public void OnSelect(BaseEventData eventData)
+    {
+        OnDisable();
+
+        GameObject keyboard_prefab = Resources.Load<GameObject>("BaroqueUI/Keyboard");
+
+        Vector3 pos = transform.position - 0.12f * transform.forward - 0.15f * transform.up;
+        Quaternion rotation = Quaternion.LookRotation(transform.forward);
+        rotation = Quaternion.Euler(43, rotation.eulerAngles.y, 0);
+        keyboard = Instantiate(keyboard_prefab, pos, rotation).GetComponent<KeyboardClicker>();
+        keyboard.keyboardHandler = gameObject;
+        keyboard.enableEnterKey = true;
+        keyboard.enableTabKey = false;
+        keyboard.enableEscKey = true;
+
+        InputField inputField = GetComponent<InputField>();
+        original_text = inputField.text;
+    }
+
+    public void OnDeselect(BaseEventData eventData)
+    {
+        OnDisable();
+    }
+
+    public void OnDisable()
+    {
+        if (keyboard != null && keyboard)
+            Destroy(keyboard.gameObject);
+        keyboard = null;
+    }
+
+    void EnterText(string add, bool remove = false)
+    {
+        InputField inputField = GetComponent<InputField>();
+        string s = inputField.text;
+        int pos = inputField.caretPosition;
+
+        if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+        {
+            int i1 = inputField.selectionAnchorPosition;
+            int i2 = inputField.selectionFocusPosition;
+            if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
+            if (0 <= i1 && i2 <= s.Length)
+            {
+                s = s.Remove(i1, i2 - i1);
+                pos = i1;
+                remove = false;
+            }
+        }
+
+        if (pos < 0) pos = 0;
+        if (pos > s.Length) pos = s.Length;
+
+        if (remove && last_typed != null && last_typed_pos == pos - last_typed.Length &&
+                last_typed_pos + last_typed.Length <= s.Length &&
+                s.Substring(last_typed_pos, last_typed.Length) == last_typed)
+        {
+            s = s.Remove(last_typed_pos, last_typed.Length);
+            pos = last_typed_pos;
+        }
+        inputField.text = s.Insert(pos, add);
+        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos + add.Length;
+        last_typed = add.Length > 0 ? add : null;
+        last_typed_pos = pos;
+    }
+
+    public void TypeKey(string key)
+    {
+        if (key == "\n")
+        {
+            InputField inputField = GetComponent<InputField>();
+            original_text = inputField.text;
+            inputField.DeactivateInputField();    /* in a Dialog, this sends the OnChange event */
+            inputField.ActivateInputField();
+        }
+        else if (key == "\x1b")
+        {
+            InputField inputField = GetComponent<InputField>();
+            inputField.text = original_text;
+            inputField.DeactivateInputField();    /* xxx sends OnChange too, even though there is no change */
+            inputField.ActivateInputField();
+        }
+        else
+            EnterText(key);
+    }
+
+    public void TypeKeyReplacement(string newkey)
+    {
+        EnterText(newkey, remove: true);
+    }
+
+    public void TypeBackspace()
+    {
+        InputField inputField = GetComponent<InputField>();
+        string s = inputField.text;
+        int pos = inputField.caretPosition - 1;
+        int length = 1;
+
+        if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+        {
+            int i1 = inputField.selectionAnchorPosition;
+            int i2 = inputField.selectionFocusPosition;
+            if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
+            if (0 <= i1 && i2 <= s.Length)
+            {
+                pos = i1;
+                length = i2 - i1;
+            }
+        }
+
+        if (pos < 0) return;
+        if (pos + length > s.Length) return;
+
+        inputField.text = s.Remove(pos, length);
+        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos;
+        last_typed = null;
     }
 }
