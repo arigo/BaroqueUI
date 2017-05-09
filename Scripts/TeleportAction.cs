@@ -138,7 +138,7 @@ namespace BaroqueUI
         void StartTeleporting()
         {
             FadeToColor(Color.black, 0.1f);
-            Invoke("ChangeLocation", 0.1f);
+            Invoke("ChangeLocation", 0.11f);
         }
 
         void FadeToColor(Color target_color, float duration)

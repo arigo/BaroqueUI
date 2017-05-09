@@ -23,6 +23,8 @@ namespace BaroqueUI
             }
             shown = dialogShown = null;
 
+            ctr.SetPointer(null);
+
             if (should_hide)
                 return;
 

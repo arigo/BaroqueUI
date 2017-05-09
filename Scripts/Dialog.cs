@@ -314,5 +314,15 @@ namespace BaroqueUI
         {
             return false;
         }
+
+        public override float GetPriority(Controller controller)
+        {
+            Plane plane = new Plane(transform.forward, transform.position);
+            Ray ray = new Ray(controller.position, transform.forward);
+            float enter;
+            if (!plane.Raycast(ray, out enter))
+                enter = 0;
+            return 100 + enter;
+        }
     }
 }
