@@ -5,15 +5,11 @@ using BaroqueUI;
 using System;
 
 
-public class MetalScript : ControllerTracker
+public class MetalScript : ConcurrentControllerTracker
 {
-#if false
-    public GameObject hoveringPointPrefab, selectedPointPrefab, fixedPointPrefab;
+    public GameObject selectedPointPrefab;
+    public GameObject pointerDeform, pointerMove;
     public GameObject selectionCubePrefab;
-    public GameObject pointerDeform, pointerSelect, pointerMove, pointerZoom;
-
-    public enum Mode { Deform, Select, Move, Zoom };
-    static Mode mode = Mode.Deform;
 
     Mesh mesh;
     Vector3[] vertices;   /* a cache, because reading mesh.vertices is not an O(1) operation */
@@ -24,46 +20,20 @@ public class MetalScript : ControllerTracker
         mesh = GetComponent<MeshFilter>().mesh;
         vertices = mesh.vertices;
         triangles = mesh.triangles;
-        sel_states = new SelState[vertices.Length];
-        g_points = new GameObject[vertices.Length];
 
         UpdatedMeshVertices();
     }
 
     void UpdatedMeshVertices()
     {
-        /*var coll = GetComponent<BoxCollider>();
-        Bounds bounds = mesh.bounds;
-        coll.center = bounds.center;
-        coll.size = (bounds.extents + new Vector3(0.1f, 0.1f, 0.1f)) * 2f;
-        */
         mesh.vertices = vertices;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
-        GetComponent<MeshCollider>().sharedMesh = mesh;
-    }
-
-    GameObject PointerPrefab()
-    {
-        switch (mode)
-        {
-            case Mode.Deform: return pointerDeform;
-            case Mode.Select: return pointerSelect;
-            case Mode.Move: return pointerMove;
-            case Mode.Zoom: return pointerZoom;
-        }
-        return null;
-    }
-
-    GameObject SelectedPointPrefab(SelState state)
-    {
-        switch (state)
-        {
-            case SelState.Hovering: return hoveringPointPrefab;
-            case SelState.Selected: return selectedPointPrefab;
-            case SelState.Fixed: return fixedPointPrefab;
-        }
-        return null;
+        GetComponent<BoxCollider>().center = mesh.bounds.center;
+        GetComponent<BoxCollider>().size = mesh.bounds.size + new Vector3(
+            1.5f / transform.lossyScale.x,
+            1.5f / transform.lossyScale.y,
+            1.5f / transform.lossyScale.z);
     }
 
 
@@ -119,7 +89,7 @@ public class MetalScript : ControllerTracker
 
     static public float DistanceToEdge(Vector3 v1, Vector3 v2, Vector3 p)
     {
-        Vector3 p1 = v1 - v2;
+        Vector3 p1 = v2 - v1;
         Vector3 p2 = p - v1;
         float dot = Vector3.Dot(p2, p1);
         if (dot > 0 && dot < p1.sqrMagnitude)
@@ -195,370 +165,259 @@ public class MetalScript : ControllerTracker
 
     /****************************************************************************************/
 
-    enum SelState { NotSelected, Hovering, Selected, Fixed };
-    SelState[] sel_states;
-    GameObject[] g_points;
-    int[] hovering_indexes;
-
-    void SetSelState(int vertex_index, SelState state)
-    {
-        if (sel_states[vertex_index] == state)
-            return;
-        sel_states[vertex_index] = state;
-        if (g_points[vertex_index] != null)
-        {
-            Destroy(g_points[vertex_index]);
-            g_points[vertex_index] = null;
-        }
-    }
-
-
     class Local
     {
-        /* info that needs to be stored for each controller independently */
-        public GameObject[] selected_points;
+        internal GameObject current_pointer;
+        internal Vector3 pointer_scale;
+
+        internal HashSet<int> dragging;
+        internal Vector3 prev_position, org_position;
+        internal Transform selection_cube;
+        internal bool is_gripping;
+
+        internal bool scroll_touched;
+        internal Vector2 scroll_prev;
+
+        internal void Reset()
+        {
+            dragging = null;
+            if (selection_cube != null)
+            {
+                Destroy(selection_cube.gameObject);
+                selection_cube = null;
+            }
+            is_gripping = false;
+        }
     }
     Local[] locals;
 
+    enum SelState { NotSelected, Hovering, Selected, Fixed };
+    SelState[] sel_states;
+    Renderer[] g_points;
+
+    Color ColorForSelState(SelState sel)
+    {
+        switch (sel)
+        {
+            case SelState.NotSelected: return Color.clear;
+            case SelState.Hovering:    return new Color(0.32f, 0.32f, 1, 0.5f);
+            default:                   return new Color(0.32f, 0.32f, 1);
+            case SelState.Fixed:       return new Color(0.64f, 1, 0.32f);
+        }
+    }
+
+    public void SetHoverPointer(Controller controller)
+    {
+        Local local = controller.GetAdditionalData(ref locals);
+        local.current_pointer = controller.SetPointerPrefab(pointerDeform);
+        local.pointer_scale = local.current_pointer.transform.localScale;
+    }
+
     public override void OnEnter(Controller controller)
     {
-        controller.SetPointer(PointerPrefab());
-    }
+        SetHoverPointer(controller);
 
-    public override void OnLeave(Controller controller)
-    {
-        SetSelectionPoints(controller.index, 0);
-    }
-
-    GameObject[] SetSelectionPoints(int cindex, int count)
-    {
-        Local local = locals[cindex];
-        int old_count = local.selected_points == null ? 0 : local.selected_points.Length;
-        for (int i = count; i < old_count; i++)
-            Destroy(local.selected_points[i]);
-        Array.Resize(ref local.selected_points, count);
-        for (int i = old_count; i < count; i++)
-            local.selected_points[i] = Instantiate(selectedPointPrefabs[cindex], transform);
-        return local.selected_points;
-    }
-
-    public override void OnMoveOver(Controller controller)
-    {
-        int[] selected = FindSelection(controller);
-        float scale;
-
-        if (selected == null)
+        if (g_points == null)
         {
-            /* not close to any vertex */
-            SetSelectionPoints(controller.index, 0);
-            scale = 1;
-        }
-        else
-        {
-            /* close to at least one vertex */
-            GameObject[] sel_pts = SetSelectionPoints(controller.index, selected.Length);
-            for (int i = 0; i < selected.Length; i++)
-                sel_pts[i].transform.localPosition = vertices[selected[i]];
-            
-            scale = 1 + Mathf.Sin(Time.time * 2 * Mathf.PI);
+            sel_states = new SelState[vertices.Length];
+            g_points = new Renderer[vertices.Length];
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                g_points[i] = Instantiate(selectedPointPrefab, transform).GetComponent<Renderer>();
+                g_points[i].gameObject.SetActive(false);
+            }
         }
 
-        for (int i = 0; i < vertices.Length; i++)
+        Local local = controller.GetAdditionalData(ref locals);
+        local.scroll_touched = false;
+        local.Reset();
+    }
+
+    public override void OnMove(Controller[] controllers)
+    {
+        bool updated_vertices = false;
+
+        for (int i = 0; i < sel_states.Length; i++)
+            if (sel_states[i] != SelState.Fixed)
+                sel_states[i] = SelState.NotSelected;
+
+        foreach (var controller in controllers)
         {
-            if (sel_states[i] == SelState.Hovering)
-                ;
+            Local local = controller.GetAdditionalData(ref locals);
+            if (controller.touchpadTouched)
+            {
+                if (local.scroll_touched)
+                {
+                    float scroll_diff = controller.touchpadPosition.y - local.scroll_prev.y;
+                    float scale = Mathf.Exp(scroll_diff * -0.5f);
+                    Vector3 diff = transform.position - controller.position;
+                    transform.localScale *= scale;
+                    transform.position = controller.position + diff * scale;
+                    updated_vertices = true;   /* to update the collider box */
+                }
+                local.scroll_prev = controller.touchpadPosition;
+            }
+            local.scroll_touched = controller.touchpadTouched;
         }
+
+        foreach (var controller in controllers)
+        {
+            Local local = controller.GetAdditionalData(ref locals);
+
+            if (local.dragging != null)
+            {
+                Vector3 new_position = transform.InverseTransformPoint(controller.position);
+
+                if (local.selection_cube == null)
+                {
+                    Vector3 delta = new_position - local.prev_position;
+                    local.prev_position = new_position;
+                    foreach (int j in local.dragging)
+                    {
+                        vertices[j] += delta;
+                        if (sel_states[j] != SelState.Fixed)
+                            sel_states[j] = SelState.Selected;
+                    }
+                    updated_vertices = true;
+                }
+                else
+                {
+                    Vector3 center = (new_position + local.org_position) * 0.5f;
+                    Vector3 diff = new_position - local.org_position;
+                    diff.x = Mathf.Abs(diff.x);
+                    diff.y = Mathf.Abs(diff.y);
+                    diff.z = Mathf.Abs(diff.z);
+
+                    local.selection_cube.transform.localPosition = center;
+                    local.selection_cube.transform.localScale = diff;
+
+                    Bounds bounds = new Bounds(center, diff);
+
+                    for (int j = 0; j < sel_states.Length; j++)
+                    {
+                        if (bounds.Contains(vertices[j]))
+                        {
+                            sel_states[j] = SelState.Fixed;
+                            local.dragging.Add(j);
+                        }
+                        else if (local.dragging.Contains(j))
+                        {
+                            sel_states[j] = SelState.NotSelected;
+                            local.dragging.Remove(j);
+                        }
+                    }
+                }
+            }
+            else if (local.is_gripping)
+            {
+                Vector3 pp = transform.TransformPoint(local.prev_position);
+                transform.position += controller.position - pp;
+                local.prev_position = transform.InverseTransformPoint(controller.position);
+            }
+            else
+            {
+                int[] selected = FindSelection(controller);
+                float scale;
+
+                if (selected == null)
+                {
+                    /* not close to any vertex */
+                    scale = 1;
+                }
+                else
+                {
+                    /* close to at least one vertex */
+                    for (int i = 0; i < selected.Length; i++)
+                        if (sel_states[selected[i]] == SelState.NotSelected)
+                            sel_states[selected[i]] = SelState.Hovering;
+                    scale = 1 + Mathf.Sin(Time.time * 2 * Mathf.PI) * 0.5f;
+                }
+                local.current_pointer.transform.localScale = local.pointer_scale * scale;
+            }
+        }
+
+        /* update the mesh vertices */
+        if (updated_vertices)
+            UpdatedMeshVertices();
 
         /* update the selection points */
         for (int i = 0; i < vertices.Length; i++)
         {
+            Renderer g = g_points[i];
             if (sel_states[i] == SelState.NotSelected)
-                continue;
-            if (g_points[i] == null)
-                g_points[i] = Instantiate(SelectedPointPrefab(sel_states[i]), transform);
-            g_points[i].transform.localPosition = vertices[i];
-        }
-
-        GameObject go = controller.GetPointer();
-        GameObject prefab = PointerPrefab();
-        if (go != null && prefab != null)
-            go.transform.localScale = prefab.transform.localScale * scale;
-    }
-    
-
-    /**********  Deform  **********/
-
-
-    class MeshVerticesHover : Hover
-    {
-        MetalScript ms;
-        public int[] vertices_index;
-        HashSet<int> vertices_set;
-        GameObject[] selected_points;
-        Material[] origin_materials;
-        Vector3 prev_position;
-
-        public MeshVerticesHover(MetalScript ms, int[] vertices_index)
-        {
-            this.ms = ms;
-            this.vertices_index = vertices_index;
-            vertices_set = new HashSet<int>(vertices_index);
-            selected_points = new GameObject[vertices_index.Length];
-            origin_materials = new Material[vertices_index.Length];
-        }
-
-        public Vector3 GetVertex(int i)
-        {
-            return ms.transform.TransformPoint(ms.vertices[vertices_index[i]]);
-        }
-
-        public bool IsCloseFromSelectedVertices(Vector3 p)
-        {
-            for (int i = 0; i < vertices_index.Length; i++)
-                if (MetalScript.DistanceToVertex(ms.vertices[vertices_index[i]], p) < MetalScript.DISTANCE_VERTEX_MIN)
-                    return true;
-
-            for (int i = 0; i < ms.triangles.Length; i++)
             {
-                if (vertices_set.Contains(ms.triangles[i]) &&
-                    vertices_set.Contains(ms.triangles[ms.LineNext(i)]) &&
-                    MetalScript.DistanceToEdge(ms.vertices[ms.triangles[i]],
-                                               ms.vertices[ms.triangles[ms.LineNext(i)]],
-                                               p) < MetalScript.DISTANCE_EDGE_MIN)
-                    return true;
+                g.gameObject.SetActive(false);
             }
-
-            for (int i = 0; i < ms.triangles.Length; i += 3)
+            else
             {
-                if (vertices_set.Contains(ms.triangles[i + 0]) &&
-                    vertices_set.Contains(ms.triangles[i + 1]) &&
-                    vertices_set.Contains(ms.triangles[i + 2]) &&
-                    MetalScript.DistanceToTriangle(ms.vertices[ms.triangles[i + 0]],
-                                                   ms.vertices[ms.triangles[i + 1]],
-                                                   ms.vertices[ms.triangles[i + 2]],
-                                                   p) < MetalScript.DISTANCE_TRIANGLE_MIN)
-                    return true;
+                g.material.color = ColorForSelState(sel_states[i]);
+                g.transform.localPosition = vertices[i];
+                g.gameObject.SetActive(true);
             }
-
-            return false;
         }
+    }
 
-        public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
+    public override void OnLeave(Controller controller)
+    {
+        Local local = controller.GetAdditionalData(ref locals);
+        local.Reset();
+        controller.SetPointerPrefab(null);
+    }
+
+    public override void OnTriggerDown(Controller controller)
+    {
+        Local local = controller.GetAdditionalData(ref locals);
+        local.Reset();
+
+        bool already_dragging = Array.Exists(locals, (loc) => loc.dragging != null);
+        local.org_position = local.prev_position = transform.InverseTransformPoint(controller.position);
+        local.dragging = new HashSet<int>();
+
+        int[] selection = FindSelection(controller);
+        if (selection == null)
         {
-            action.transform.Find("Trigger Location").gameObject.SetActive(true);
-            Transform tr = action.transform.Find("Indicator");
-            if (tr != null)
-                tr.gameObject.SetActive(false);
+            local.selection_cube = Instantiate(selectionCubePrefab, transform).transform;
+            local.selection_cube.transform.localScale = Vector3.zero;   /* initial size */
 
-            for (int i = 0; i < vertices_index.Length; i++)
-                selected_points[i] = Instantiate(ms.selectedPointPrefab);
+            for (int i = 0; i < sel_states.Length; i++)
+                if (sel_states[i] == SelState.Fixed)
+                    sel_states[i] = SelState.NotSelected;
         }
-
-        public override void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
+        else
         {
-            for (int i = 0; i < vertices_index.Length; i++)
-                selected_points[i].transform.position = GetVertex(i);
-        }
-
-        public override void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            foreach (var selected_point in selected_points)
-                Destroy(selected_point);
-        }
-
-        public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            prev_position = ms.transform.InverseTransformPoint(action.transform.position);
-            for (int i = 0; i < vertices_index.Length; i++)
+            local.dragging.UnionWith(selection);
+            if (Array.Exists(selection, i => sel_states[i] == SelState.Fixed) && !already_dragging)
             {
-                MeshRenderer rend = selected_points[i].GetComponent<MeshRenderer>();
-                origin_materials[i] = rend.sharedMaterial;
-                Color c = rend.material.color;
-                c.a = 1;
-                rend.material.color = c;
+                for (int i = 0; i < sel_states.Length; i++)
+                    if (sel_states[i] == SelState.Fixed)
+                        local.dragging.Add(i);
             }
-            action.transform.Find("Trigger Location").gameObject.SetActive(false);
         }
 
-        public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            Vector3 new_position = ms.transform.InverseTransformPoint(action.transform.position);
-            Vector3 delta = new_position - prev_position;
-            prev_position = new_position;
-            for (int i = 0; i < vertices_index.Length; i++)
-            {
-                ms.vertices[vertices_index[i]] += delta;
-                selected_points[i].transform.position = GetVertex(i);
-            }
-            ms.UpdatedMeshVertices();
-        }
-
-        public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            for (int i = 0; i < vertices_index.Length; i++)
-                selected_points[i].GetComponent<MeshRenderer>().sharedMaterial = origin_materials[i];
-            action.transform.Find("Trigger Location").gameObject.SetActive(true);
-        }
+        controller.SetPointerPrefab(null);
     }
 
-
-    /**********  Move/Zoom  **********/
-
-    Vector3 move_origin;
-    Transform move_blink;
-    Vector3 move_original_scale;
-
-    Vector3 scale_origin, scale_p1, scale_p2;
-    float scale_z_org;
-
-    private void OnIndicatorEnter(ControllerAction action, ControllerSnapshot snapshot)
+    public override void OnTriggerUp(Controller controller)
     {
-        move_blink = action.transform.Find("Indicator");
-        move_original_scale = move_blink.localScale;
+        Local local = controller.GetAdditionalData(ref locals);
+        local.Reset();
+        SetHoverPointer(controller);
     }
 
-    private void OnIndicatorOver(ControllerAction action, ControllerSnapshot snapshot)
+    public override void OnGripDown(Controller controller)
     {
-        move_blink.localScale = move_original_scale * (1.5f + Mathf.Sin(Time.time * 2 * Mathf.PI) * 0.5f);
+        Local local = controller.GetAdditionalData(ref locals);
+        local.Reset();
+        local.is_gripping = true;
+        local.org_position = local.prev_position = transform.InverseTransformPoint(controller.position);
+
+        controller.SetPointerPrefab(pointerMove);
     }
 
-    private void OnIndicatorLeave(ControllerAction action, ControllerSnapshot snapshot)
+    public override void OnGripUp(Controller controller)
     {
-        move_blink.localScale = move_original_scale;
-        move_blink = null;
+        Local local = controller.GetAdditionalData(ref locals);
+        local.Reset();
+        SetHoverPointer(controller);
     }
-
-    private void OnMoveDown(ControllerAction action, ControllerSnapshot snapshot)
-    {
-        move_origin = transform.position - action.transform.position;
-    }
-
-    private void OnMoveDrag(ControllerAction action, ControllerSnapshot snapshot)
-    {
-        transform.position = move_origin + action.transform.position;
-    }
-
-    const float SCALE_SPEED = 3.5f;
-
-    private void OnZoomDown(ControllerAction action, ControllerSnapshot snapshot)
-    {
-        scale_p1 = transform.position - action.transform.position;
-        scale_p2 = action.transform.position;
-        scale_z_org = action.transform.position.y;
-        scale_origin = transform.localScale;
-    }
-
-    private void OnZoomDrag(ControllerAction action, ControllerSnapshot snapshot)
-    {
-        float scale = Mathf.Exp(SCALE_SPEED * (action.transform.position.y - scale_z_org));
-        transform.localScale = scale_origin * scale;
-        transform.position = scale_p1 * scale + scale_p2;
-    }
-
-
-    /**********  Selection box  **********/
-
-    private Hover FindSelectionHover(ControllerAction action, ControllerSnapshot snapshot)
-    {
-        /* Make and cache one SelectionHover per 'action', i.e. per controller.
-         * The SelectionHover is used for making a selection cube.  Once this is done,
-         * FindHover() below will return a regular MeshVerticesHover as long as we
-         * are close to one of the selected vertices/edges/faces.
-         */
-        if (!selection_hovers.ContainsKey(action))
-            selection_hovers[action] = new SelectionHover(this, action);
-
-        SelectionHover sel_hover = selection_hovers[action];
-        if (sel_hover.selected_vertices_hover != null)
-        {
-            Vector3 p = transform.InverseTransformPoint(action.transform.position);
-            if (sel_hover.selected_vertices_hover.IsCloseFromSelectedVertices(p))
-                return sel_hover.selected_vertices_hover;
-        }
-        return sel_hover;
-    }
-
-    class SelectionHover : Hover
-    {
-        MetalScript ms;
-        ControllerAction action;
-        GameObject selection_cube;
-        public MeshVerticesHover selected_vertices_hover;
-        Vector3 select_origin;
-
-        public SelectionHover(MetalScript ms, ControllerAction action)
-        {
-            this.ms = ms;
-            this.action = action;
-            action.onDisable += RemoveHover;
-        }
-
-        void RemoveHover()
-        {
-            action.onDisable -= RemoveHover;
-            ms.selection_hovers.Remove(action);
-        }
-
-        public override void OnButtonEnter(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            action.transform.Find("Trigger Location").gameObject.SetActive(false);
-            action.transform.Find("Indicator").gameObject.SetActive(true);
-            ms.OnIndicatorEnter(action, snapshot);
-        }
-
-        public override void OnButtonOver(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            ms.OnIndicatorOver(action, snapshot);
-        }
-
-        public override void OnButtonLeave(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            ms.OnIndicatorLeave(action, snapshot);
-        }
-
-        public override void OnButtonDown(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            select_origin = ms.transform.InverseTransformPoint(action.transform.position);
-            selection_cube = Instantiate(ms.selectionCubePrefab, ms.transform);
-            selected_vertices_hover = new MeshVerticesHover(ms, new int[0]);
-            selected_vertices_hover.OnButtonEnter(action, snapshot);
-        }
-
-        public override void OnButtonDrag(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            Vector3 p = ms.transform.InverseTransformPoint(action.transform.position);
-            Vector3 center = (p + select_origin) * 0.5f;
-            Vector3 diff = p - select_origin;
-            diff.x = Mathf.Abs(diff.x);
-            diff.y = Mathf.Abs(diff.y);
-            diff.z = Mathf.Abs(diff.z);
-
-            selection_cube.transform.localPosition = center;
-            selection_cube.transform.localScale = diff;
-
-            Bounds bounds = new Bounds(center, diff);
-            List<int> lst = new List<int>();
-            for (int i = 0; i < ms.vertices.Length; i++)
-                if (bounds.Contains(ms.vertices[i]))
-                    lst.Add(i);
-
-            int[] vertices_index = lst.ToArray();
-            if (vertices_index != selected_vertices_hover.vertices_index)
-            {
-                selected_vertices_hover.OnButtonLeave(action, snapshot);
-                selected_vertices_hover = new MeshVerticesHover(ms, vertices_index);
-                selected_vertices_hover.OnButtonEnter(action, snapshot);
-            }
-            selected_vertices_hover.OnButtonOver(action, snapshot);
-        }
-
-        public override void OnButtonUp(ControllerAction action, ControllerSnapshot snapshot)
-        {
-            selected_vertices_hover.OnButtonLeave(action, snapshot);
-            if (selected_vertices_hover.vertices_index.Length == 0)
-                selected_vertices_hover = null;
-            Destroy(selection_cube);
-        }
-    }
-#endif
 }

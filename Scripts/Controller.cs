@@ -69,7 +69,7 @@ namespace BaroqueUI
 
         public GameObject SetPointer(string pointer_name)
         {
-            return SetPointerPrefab(pointer_name != null ? BaroqueUI.GetPointerObject(pointer_name) : null);
+            return SetPointerPrefab(pointer_name != null ? Resources.Load<GameObject>("Pointers/" + pointer_name) : null);
         }
 
         public GameObject SetPointerPrefab(GameObject prefab)
@@ -95,6 +95,19 @@ namespace BaroqueUI
         public int index { get { return controller_index; } }
 
         public static Controller GetController(int index) { return BaroqueUI.GetControllers()[index]; }
+
+        public T GetAdditionalData<T>(ref T[] locals) where T: new()
+        {
+            int index = controller_index;
+            int length = locals == null ? 0 : locals.Length;
+            while (length <= index)
+            {
+                Array.Resize<T>(ref locals, length + 1);
+                locals[length] = new T();
+                length += 1;
+            }
+            return locals[index];
+        }
 
 
         /***************************************************************************************/
@@ -313,7 +326,7 @@ namespace BaroqueUI
                 if (left_tracker is ConcurrentControllerTracker)
                 {
                     /* both controllers are over the same ConcurrentControllerTracker */
-                    (left_tracker as ConcurrentControllerTracker).OnMove(controllers);
+                    (left_tracker as ConcurrentControllerTracker).OnMove(FilterNotLeaving(controllers));
                     return;
                 }
             }
@@ -338,9 +351,14 @@ namespace BaroqueUI
                 }
                 else if (tracker is ConcurrentControllerTracker)
                 {
-                    (tracker as ConcurrentControllerTracker).OnMove(new Controller[] { ctrl });
+                    (tracker as ConcurrentControllerTracker).OnMove(FilterNotLeaving(new Controller[] { ctrl }));
                 }
             }
+        }
+
+        static Controller[] FilterNotLeaving(Controller[] controllers)
+        {
+            return Array.FindAll(controllers, c => c.tracker_hover == c.tracker_hover_next);
         }
 
         void CallLeaveEvents()

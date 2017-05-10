@@ -47,11 +47,6 @@ namespace BaroqueUI
             return controllers;
         }
 
-        static public GameObject GetPointerObject(string name)
-        {
-            return Resources.Load("BaroqueUI/Pointers/" + name) as GameObject;
-        }
-
 
         /* This feels like a hack, but to get UI elements from a 3D position, we need a Camera
          * to issue a Raycast().  This "camera" is set up to "look" from the controller's point 
