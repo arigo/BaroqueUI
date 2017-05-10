@@ -65,9 +65,8 @@ public class MetalScript : ConcurrentControllerTracker
         return (v - p).magnitude;
     }
 
-    int[] FindClosestVertex(Vector3 p, SubsetDelegate include)
+    int[] FindClosestVertex(Vector3 p, SubsetDelegate include, float distance_min = DISTANCE_VERTEX_MIN)
     {
-        float distance_min = DISTANCE_VERTEX_MIN;
         int closest = -1;
 
         for (int i = 0; i < vertices.Length; i++)
@@ -216,6 +215,7 @@ public class MetalScript : ConcurrentControllerTracker
     public override void OnEnter(Controller controller)
     {
         SetHoverPointer(controller);
+        controller.SetScrollWheel(visible: true);
 
         if (g_points == null)
         {
@@ -250,9 +250,14 @@ public class MetalScript : ConcurrentControllerTracker
                 {
                     float scroll_diff = controller.touchpadPosition.y - local.scroll_prev.y;
                     float scale = Mathf.Exp(scroll_diff * -0.5f);
-                    Vector3 diff = transform.position - controller.position;
+
+                    Vector3 v = transform.InverseTransformPoint(controller.position);
+                    int[] result = FindClosestVertex(v, (index) => true, distance_min: float.PositiveInfinity);
+                    v = transform.TransformPoint(vertices[result[0]]);
+
+                    Vector3 diff = transform.position - v;
                     transform.localScale *= scale;
-                    transform.position = controller.position + diff * scale;
+                    transform.position = v + diff * scale;
                     updated_vertices = true;   /* to update the collider box */
                 }
                 local.scroll_prev = controller.touchpadPosition;
@@ -362,6 +367,7 @@ public class MetalScript : ConcurrentControllerTracker
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
         controller.SetPointerPrefab(null);
+        controller.SetScrollWheel(visible: false);
     }
 
     public override void OnTriggerDown(Controller controller)

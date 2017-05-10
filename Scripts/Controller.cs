@@ -92,6 +92,12 @@ namespace BaroqueUI
             return pointer_object;
         }
 
+        public void SetScrollWheel(bool visible)
+        {
+            scrollWheelVisible = visible;
+            UpdateScrollWheel();
+        }
+
         public int index { get { return controller_index; } }
 
         public static Controller GetController(int index) { return BaroqueUI.GetControllers()[index]; }
@@ -131,6 +137,7 @@ namespace BaroqueUI
         EControllerButton? grabbing_button;
 
         SteamVR_TrackedObject trackedObject;
+        bool scrollWheelVisible;
 
         internal void Initialize(int index)
         {
@@ -483,6 +490,25 @@ namespace BaroqueUI
                 }
             }
             return -result;
+        }
+
+        void UpdateScrollWheel()
+        {
+            Transform tr1 = transform.Find("Model/scroll_wheel");
+            Transform tr2 = transform.Find("Model/trackpad_scroll_cut");
+            Transform tr3 = transform.Find("Model/trackpad");
+            if (tr1 != null) tr1.gameObject.SetActive(scrollWheelVisible);
+            if (tr2 != null) tr2.gameObject.SetActive(scrollWheelVisible);
+            if (tr3 != null) tr3.gameObject.SetActive(!scrollWheelVisible);
+        }
+
+        void LateUpdate()
+        {
+            /* haaaack: we need to constantly re-enable the scroll wheel gameobjects in 
+             * the Model.  Officially there must be a way to enable the scroll wheel,
+             * but I can't find it for now... */
+            if (scrollWheelVisible)
+                UpdateScrollWheel();
         }
     }
 }
