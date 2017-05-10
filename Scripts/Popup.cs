@@ -10,6 +10,7 @@ namespace BaroqueUI
     public abstract class BasePopup
     {
         public abstract Dialog BuildDialog();
+        public abstract void CancelBuildDialog();
 
         static GameObject dialogShown;   /* a single one for now */
 
@@ -19,14 +20,17 @@ namespace BaroqueUI
             if (dialogShown != null && dialogShown)
             {
                 should_hide = (shown == dialogShown);
-                Object.Destroy(dialogShown);
+                GameObject.Destroy(dialogShown);
             }
             shown = dialogShown = null;
 
             ctr.SetPointer(null);
 
             if (should_hide)
+            {
+                CancelBuildDialog();
                 return;
+            }
 
             Dialog dialog = BuildDialog();
             Transform transform = dialog.transform;
@@ -138,6 +142,11 @@ namespace BaroqueUI
         {
             return dialog;
         }
+
+        public override void CancelBuildDialog()
+        {
+            GameObject.Destroy(dialog);
+        }
     }
 
 
@@ -208,6 +217,10 @@ namespace BaroqueUI
                 }
             }
             return menu.GetComponent<Dialog>();
+        }
+
+        public override void CancelBuildDialog()
+        {
         }
     }
 }

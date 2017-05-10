@@ -80,11 +80,115 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
+        static int UI_layer = -1;
+        static Dictionary<Dialog, bool> active_dialogs;
+
+        RenderTexture render_texture;
+        Camera ortho_camera;
+        Transform quad, back_quad;
+        float pixels_per_unit;
+
         public void DisplayDialog()
         {
             transform.localScale = Vector3.one / unitsPerMeter;
             alreadyPositioned = true;
             gameObject.SetActive(true);
+        }
+
+        void PrepareForRendering()
+        {
+            /* XXX picking one hopefully-unused layer number... */
+            if (UI_layer < 0)
+            {
+                for (int i = 30; i >= 1; i--)
+                    if (LayerMask.LayerToName(i) == null || LayerMask.LayerToName(i) == "")
+                    {
+                        UI_layer = i;
+                        break;
+                    }
+                Debug.Assert(UI_layer >= 1);
+            }
+
+            RectTransform rtr = transform as RectTransform;
+            pixels_per_unit = GetComponent<CanvasScaler>().dynamicPixelsPerUnit;
+            render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
+                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 0);
+            Transform tr1 = transform.Find("Ortho Camera");
+            if (tr1 != null)
+                ortho_camera = tr1.GetComponent<Camera>();
+            else
+                ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
+            ortho_camera.transform.SetParent(transform);
+            ortho_camera.transform.position = rtr.TransformPoint(
+                rtr.rect.width* (0.5f - rtr.pivot.x),
+                rtr.rect.height* (0.5f - rtr.pivot.y),
+                0);
+            ortho_camera.transform.rotation = rtr.rotation;
+            ortho_camera.clearFlags = CameraClearFlags.SolidColor;
+            ortho_camera.backgroundColor = new Color(1, 1, 1);
+            ortho_camera.cullingMask = 1 << UI_layer;
+            ortho_camera.orthographic = true;
+            ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height* 0.5f, 0).magnitude;
+            ortho_camera.nearClipPlane = -10;
+            ortho_camera.farClipPlane = 10;
+            ortho_camera.targetTexture = render_texture;
+
+            foreach (var tr in GetComponentsInChildren<Transform>())
+                tr.gameObject.layer = UI_layer;
+            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(1 << UI_layer);
+
+            quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+            quad.SetParent(transform);
+            quad.position = ortho_camera.transform.position;
+            quad.rotation = ortho_camera.transform.rotation;
+            quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+            DestroyImmediate(quad.GetComponent<Collider>());
+
+            quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
+            quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
+
+            back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+            back_quad.SetParent(transform);
+            back_quad.position = ortho_camera.transform.position;
+            back_quad.rotation = ortho_camera.transform.rotation* Quaternion.LookRotation(new Vector3(0, 0, -1));
+            back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+            DestroyImmediate(back_quad.GetComponent<Collider>());
+
+            if (active_dialogs == null)
+                active_dialogs = new Dictionary<Dialog, bool>();
+            active_dialogs.Add(this, true);
+
+            StartCoroutine(UpdateRendering());
+        }
+
+        void OnDestroy()
+        {
+            if (active_dialogs != null)
+                active_dialogs.Remove(this);
+        }
+
+        IEnumerator UpdateRendering()
+        {
+            while (this && isActiveAndEnabled)
+            {
+                List<GameObject> disabled = new List<GameObject>();
+
+                foreach (Dialog dlg in active_dialogs.Keys)
+                {
+                    if (dlg != this && dlg && dlg.gameObject.activeSelf)
+                    {
+                        dlg.gameObject.SetActive(false);
+                        disabled.Add(dlg.gameObject);
+                    }
+                }
+
+                ortho_camera.Render();
+
+                foreach (GameObject gobj in disabled)
+                    gobj.SetActive(true);
+
+                yield return new WaitForSecondsRealtime(0.05f);
+            }
         }
 
         void Start()
@@ -95,8 +199,10 @@ namespace BaroqueUI
                 return;
             }
 
+            PrepareForRendering();
+
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
-                canvas.worldCamera = BaroqueUI.GetControllerCamera();
+                canvas.worldCamera = ortho_camera;
 
             foreach (InputField inputField in GetComponentsInChildren<InputField>())
             {
@@ -214,7 +320,14 @@ namespace BaroqueUI
 
         bool UpdateCurrentPoint(Controller controller, bool allow_out_of_bounds = false)
         {
-            BaroqueUI.MoveControllerCamera(controller.position, transform.forward, pevent);
+            RectTransform rtr = transform as RectTransform;
+            Vector2 local_pos = transform.InverseTransformPoint(controller.position);   /* drop the 'z' coordinate */
+            local_pos.x += rtr.rect.width * rtr.pivot.x;
+            local_pos.y += rtr.rect.height * rtr.pivot.y;
+            /* Here, 'local_pos' is in coordinates that match the UI element coordinates.
+             * To convert it to the 'screenspace' coordinates of ortho_camera, we need to apply
+             * a scaling factor of 'pixels_per_unit'. */
+            pevent.position = local_pos * pixels_per_unit;
 
             List<RaycastResult> results = new List<RaycastResult>();
             foreach (var raycaster in GetComponentsInChildren<GraphicRaycaster>())
