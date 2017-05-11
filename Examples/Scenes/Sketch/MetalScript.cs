@@ -268,6 +268,7 @@ public class MetalScript : ConcurrentControllerTracker
         foreach (var controller in controllers)
         {
             Local local = controller.GetAdditionalData(ref locals);
+            int show_hints = 0;
 
             if (local.dragging != null)
             {
@@ -328,6 +329,7 @@ public class MetalScript : ConcurrentControllerTracker
                 {
                     /* not close to any vertex */
                     scale = 1;
+                    show_hints = -1;
                 }
                 else
                 {
@@ -336,8 +338,39 @@ public class MetalScript : ConcurrentControllerTracker
                         if (sel_states[selected[i]] == SelState.NotSelected)
                             sel_states[selected[i]] = SelState.Hovering;
                     scale = 1 + Mathf.Sin(Time.time * 2 * Mathf.PI) * 0.5f;
+
+                    show_hints = selected.Length;
+
+                    if (Array.Exists(selected, i => sel_states[i] == SelState.Fixed))
+                    {
+                        bool already_dragging = Array.Exists(locals, (loc) => loc.dragging != null);
+                        if (!already_dragging)
+                        {
+                            HashSet<int> pts = new HashSet<int>(selected);
+                            for (int i = 0; i < sel_states.Length; i++)
+                                if (sel_states[i] == SelState.Fixed)
+                                    pts.Add(i);
+                            show_hints = pts.Count;
+                        }
+                    }
                 }
                 local.current_pointer.transform.localScale = local.pointer_scale * scale;
+            }
+
+            switch (show_hints)
+            {
+                case 0:
+                    controller.SetControllerHints(/* nothing */);
+                    break;
+                case -1:
+                    controller.SetControllerHints(trigger: "Box selection", grip: "Move model", touchpadTouched: "Zoom");
+                    break;
+                case 1:
+                    controller.SetControllerHints(trigger: "Move point", grip: "Move model", touchpadTouched: "Zoom");
+                    break;
+                default:
+                    controller.SetControllerHints(trigger: "Move " + show_hints + " points", grip: "Move model", touchpadTouched: "Zoom");
+                    break;
             }
         }
 
@@ -368,6 +401,7 @@ public class MetalScript : ConcurrentControllerTracker
         local.Reset();
         controller.SetPointerPrefab(null);
         controller.SetScrollWheel(visible: false);
+        controller.SetControllerHints();
     }
 
     public override void OnTriggerDown(Controller controller)

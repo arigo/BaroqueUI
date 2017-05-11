@@ -98,6 +98,16 @@ namespace BaroqueUI
             UpdateScrollWheel();
         }
 
+        public void SetControllerHints(string trigger = null, string grip = null, 
+            string touchpadTouched = null, string touchpadPressed = null, string menu = null)
+        {
+            SetControllerHint(ref triggerHint, trigger);
+            SetControllerHint(ref gripHint, grip);
+            SetControllerHint(ref touchpadTouchedHint, touchpadTouched);
+            SetControllerHint(ref touchpadPressedHint, touchpadPressed);
+            SetControllerHint(ref menuHint, menu);
+        }
+
         public int index { get { return controller_index; } }
 
         public static Controller GetController(int index) { return BaroqueUI.GetControllers()[index]; }
@@ -502,6 +512,9 @@ namespace BaroqueUI
             if (tr3 != null) tr3.gameObject.SetActive(!scrollWheelVisible);
         }
 
+        const float HINT_DELAY = 0.75f;
+        const float HINT_MAX_VELOCITY = 0.5f;
+
         void LateUpdate()
         {
             /* haaaack: we need to constantly re-enable the scroll wheel gameobjects in 
@@ -509,6 +522,73 @@ namespace BaroqueUI
              * but I can't find it for now... */
             if (scrollWheelVisible)
                 UpdateScrollWheel();
+
+            bool too_fast = DampingEstimateVelocity().sqrMagnitude > HINT_MAX_VELOCITY * HINT_MAX_VELOCITY;
+            UpdateControllerHint(ref triggerHint, "Trigger", too_fast);
+            UpdateControllerHint(ref gripHint, "Grip", too_fast);
+            UpdateControllerHint(ref touchpadTouchedHint, "TouchpadTouched", too_fast);
+            UpdateControllerHint(ref touchpadPressedHint, "TouchpadPressed", too_fast);
+            UpdateControllerHint(ref menuHint, "Menu", too_fast);
+        }
+
+        struct Hint
+        {
+            public string text;
+            public GameObject gobj;
+            public UnityEngine.UI.Text tobj;
+        }
+
+        Hint triggerHint, gripHint, touchpadTouchedHint, touchpadPressedHint, menuHint;
+        public float hintsShowAt;
+
+        void SetControllerHint(ref Hint hint, string text)
+        {
+            if (text == "")
+                text = null;
+            if (hint.text == text)
+                return;
+
+            hint.text = text;
+
+            if (text == null)
+            {
+                if (hint.gobj != null && hint.gobj)
+                    Destroy(hint.gobj);
+                hint.gobj = null;
+                return;
+            }
+            else
+            {
+                hintsShowAt = Time.time + HINT_DELAY;
+            }
+        }
+
+        void UpdateControllerHint(ref Hint hint, string kind, bool too_fast)
+        {
+            if (hint.text == null)
+                return;
+
+            if (too_fast)
+            {
+                if (hint.gobj != null && hint.gobj)
+                    Destroy(hint.gobj);
+                hint.gobj = null;
+                hintsShowAt = Time.time + HINT_DELAY;
+            }
+            else
+            {
+                if (hint.gobj == null || !hint.gobj)
+                {
+                    if (Time.time < hintsShowAt)
+                        return;
+
+                    GameObject prefab = Resources.Load<GameObject>("BaroqueUI/ControllerTextHint" + kind);
+                    hint.gobj = Instantiate(prefab, transform, instantiateInWorldSpace: false) as GameObject;
+                    hint.tobj = hint.gobj.transform.GetComponentInChildren<UnityEngine.UI.Text>();
+                }
+                if (hint.tobj.text != hint.text)
+                    hint.tobj.text = hint.text;
+            }
         }
     }
 }
