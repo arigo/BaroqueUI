@@ -12,6 +12,7 @@ namespace BaroqueUI
     public class Dialog : ControllerTracker
     {
         public bool alreadyPositioned = false;
+        public bool noExtraKeyboard = false;
         public float unitsPerMeter = 400;
 
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
@@ -206,7 +207,7 @@ namespace BaroqueUI
 
             foreach (InputField inputField in GetComponentsInChildren<InputField>())
             {
-                if (inputField.GetComponent<KeyboardActivator>() == null)
+                if (inputField.GetComponent<KeyboardActivator>() == null && !noExtraKeyboard)
                     inputField.gameObject.AddComponent<KeyboardActivator>();
             }
 

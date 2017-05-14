@@ -10,11 +10,35 @@ using System.Runtime.InteropServices;
 
 public class KeyboardClicker : ConcurrentControllerTracker
 {
-    /* messages sent to keyboardHandler with SendMessage:
-        TypeKey(string key);                   -- type the given character(s)
-        TypeKeyReplacement(string newkey);     -- replace the most recently typed characters
-        TypeBackspace();                       -- backspace key
+    /* This script sends to 'keyboardHandler' the following message:
+          TypeKey(TypeKey key);
+
+       Apart from the special keys (enter, esc, tab, backspace), all regular keys are sent in the
+       following sequence:
+       - TypeKey(Preview);
+       - optionally more TypeKey(Preview), each replacing the current key;
+       - one final TypeKey(Confirm), always with the same key as the most recent TypeKey(Preview).
+
+       The special keys cannot occur between a TypeKey(Preview) and a TypeKey(Confirm).
+       This script will always confirm a previewed key before that.  In one case this script can
+       cancel a previewed key by emitting TypeKey({Preview, ""}) and TypeKey({Confirm, ""}).
+
+       Dead keys are sent as, say, TypeKey({Preview, "^"}).  Then it might be replaced with a
+       TypeKey({Preview, "â"}) followed by TypeKey({Confirm, "â"}).  Or the dead key alone can be
+       confirmed, e.g. if we press the space bar or a letter that can't combine with the dead key.
+
+       There are two different ways to use this:
+
+       * If you can easily accept corrections in output, e.g. if it is sent to an inputField,
+         then write the Previewed key immediately but replace them with further inputs until
+         you get the Confirm.  Maybe use a different color or font for unconfirmed keys.
+
+       * If you can't, then ignore Preview and only emit keys when you get the Confirm.
+
      */
+    public enum EKeyState { Preview, Confirm, Special_Backspace, Special_Tab, Special_Enter, Special_Esc };
+    public struct TypeKey { public EKeyState state; public string key; };
+
     public GameObject keyboardHandler;
     public bool enableTabKey = true;
     public bool enableEnterKey = true;
@@ -311,6 +335,10 @@ public class KeyboardClicker : ConcurrentControllerTracker
     string dead_key_last;    /* the key last typed that is a dead key, e.g. "^" on French keyboards. */
     int dead_key_status;    /* 0: no dead key; 1: pressing/pressed the dead key; 2: pressing/pressed the follow-up key */
 
+    string unconfirmed_key;
+    Local unconfirmed_key_local;
+
+
     public override void OnEnter(Controller controller)
     {
         locals.Add(new Local {
@@ -321,22 +349,34 @@ public class KeyboardClicker : ConcurrentControllerTracker
         is_active = 3;
     }
 
-    void SendTypeKey(string key)
+    void SendKey(EKeyState state, string key)
     {
         if (keyboardHandler != null)
-            keyboardHandler.SendMessage("TypeKey", key, SendMessageOptions.RequireReceiver);
+        {
+            keyboardHandler.SendMessage("TypeKey",
+                new TypeKey { state = state, key = key },
+                SendMessageOptions.RequireReceiver);
+        }
+        else
+            Debug.Log("Keyboard would send a TypeKey { state=" + state + ", key=\"" + key + "\"}");
     }
 
-    void SendTypeKeyReplacement(string newkey)
+    void SpecialKey(EKeyState state, string key)
     {
-        if (keyboardHandler != null)
-            keyboardHandler.SendMessage("TypeKeyReplacement", newkey, SendMessageOptions.RequireReceiver);
-    }
-
-    void SendTypeBackspace()
-    {
-        if (keyboardHandler != null)
-            keyboardHandler.SendMessage("TypeBackspace", null, SendMessageOptions.RequireReceiver);
+        dead_key_status = 0;
+        if (unconfirmed_key != null)
+        {
+            if (state == EKeyState.Special_Backspace)
+            {
+                /* internally handle Backspace as a cancel if there is an unconfirmed key */
+                SendKey(EKeyState.Preview, "");
+                SendKey(EKeyState.Confirm, "");
+                unconfirmed_key = null;
+                return;
+            }
+            ConfirmKey();
+        }
+        SendKey(state, key);
     }
 
     void KeyCombine(Local local, string k, bool replacement)
@@ -363,17 +403,25 @@ public class KeyboardClicker : ConcurrentControllerTracker
             {
                 string k2;
                 if (dead_keys_combinations[dead_key_last].TryGetValue(k, out k2))
-                    SendTypeKeyReplacement(k2);   /* replace the dead key with k2, which is the combined character */
+                {
+                    /* replace (below) the dead key with k2, which is the combined character */
+                }
                 else
-                    SendTypeKeyReplacement(dead_key_last + k);   /* add the non-combining letter (but it can still change later) */
+                {
+                    k2 = dead_key_last + k;   /* add the non-combining letter (but it can still change later) */
+                }
+                SendKey(EKeyState.Preview, k2);
+                unconfirmed_key = k2;
+                unconfirmed_key_local = local;
                 dead_key_status = 2;
                 return;
             }
         }
-        if (replacement)
-            SendTypeKeyReplacement(k);
-        else
-            SendTypeKey(k);    /* most common path */
+        if (!replacement)
+            ConfirmKey();
+        SendKey(EKeyState.Preview, k);
+        unconfirmed_key = k;
+        unconfirmed_key_local = local;
     }
 
     void KeyTouch(Local local, KeyInfo key, bool shift)
@@ -388,25 +436,10 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
         switch (key.scan_code)
         {
-            case SCAN_BACKSPACE:
-                dead_key_status = 0;
-                SendTypeBackspace();
-                break;
-
-            case SCAN_TAB:
-                dead_key_status = 0;
-                SendTypeKey("\t");
-                break;
-
-            case SCAN_ENTER:
-                dead_key_status = 0;
-                SendTypeKey("\n");
-                break;
-
-            case SCAN_ESC:
-                dead_key_status = 0;
-                SendTypeKey("\x1b");
-                break;
+            case SCAN_BACKSPACE: SpecialKey(EKeyState.Special_Backspace, ""); break;
+            case SCAN_TAB:       SpecialKey(EKeyState.Special_Tab, "\t");     break;
+            case SCAN_ENTER:     SpecialKey(EKeyState.Special_Enter, "\n");   break;
+            case SCAN_ESC:       SpecialKey(EKeyState.Special_Esc, "");       break;
 
             case SCAN_ALTGR:
                 return;     /* no haptic pulse */
@@ -425,6 +458,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
             case SCAN_BACKSPACE:
             case SCAN_TAB:
             case SCAN_ENTER:
+            case SCAN_ESC:
             case SCAN_ALTGR:
                 return;
 
@@ -445,6 +479,22 @@ public class KeyboardClicker : ConcurrentControllerTracker
         local.ctrl.HapticPulse(900);
     }
 
+    void ConfirmKey()
+    {
+        if (unconfirmed_key != null)
+        {
+            SendKey(EKeyState.Confirm, unconfirmed_key);
+            unconfirmed_key = null;
+        }
+        unconfirmed_key_local = null;
+    }
+
+    void ConfirmKeyLocal(Local local)
+    {
+        if (unconfirmed_key_local == local && dead_key_status != 1)
+            ConfirmKey();
+    }
+
     public override void OnMove(Controller[] controllers)
     {
         foreach (var local in locals)
@@ -455,7 +505,8 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
             if (!local.ctrl.touchpadTouched)
             {
-                /* Touchpad is not touched.  Cancel all state */
+                /* Touchpad is not touched.  Confirm the key and cancel all other state */
+                ConfirmKeyLocal(local);
                 local.touchpad_down = 0;
                 local.shift_outside = false;
                 if (local.dead_key_touchpad_not_released)
@@ -499,6 +550,13 @@ public class KeyboardClicker : ConcurrentControllerTracker
                     break;
 
                 case 1:    /* touchpad was already touched (but not pressed) previously */
+                    if (local.just_touched != key)
+                    {
+                        /* moving the controller away from the 'just_touched' key: confirm the key, if
+                         * it was touched by this controller */
+                        local.just_touched = null;
+                        ConfirmKeyLocal(local);
+                    }
                     if (local.ctrl.touchpadPressed)
                     {
                         if (key != null)
@@ -507,12 +565,9 @@ public class KeyboardClicker : ConcurrentControllerTracker
                                 KeyShiftingPress(local, key);
                             else
                                 KeyTouch(local, key, shift: !(dead_key_status == 1 && local.dead_key_touchpad_not_released));
+                            ConfirmKeyLocal(local);
                         }
                         local.touchpad_down = 2;
-                    }
-                    else if (local.just_touched != key)
-                    {
-                        local.just_touched = null;
                     }
                     break;
 
@@ -624,7 +679,11 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
 internal class KeyboardActivator : MonoBehaviour, ISelectHandler, IDeselectHandler
 {
-    public KeyboardClicker keyboard;
+    /* This component is automatically added to InputFields by the code in Dialog. 
+     * Whenever the InputField gets the selection, it displays a VR keyboard and
+     * handle the key presses.
+     */
+    public KeyboardClicker keyboard { get; private set; }
     string original_text;
     string last_typed;
     int last_typed_pos;
@@ -646,6 +705,7 @@ internal class KeyboardActivator : MonoBehaviour, ISelectHandler, IDeselectHandl
 
         InputField inputField = GetComponent<InputField>();
         original_text = inputField.text;
+        last_typed = null;
     }
 
     public void OnDeselect(BaseEventData eventData)
@@ -660,90 +720,83 @@ internal class KeyboardActivator : MonoBehaviour, ISelectHandler, IDeselectHandl
         keyboard = null;
     }
 
-    void EnterText(string add, bool remove = false)
+    public void TypeKey(KeyboardClicker.TypeKey tkey)
     {
         InputField inputField = GetComponent<InputField>();
-        string s = inputField.text;
-        int pos = inputField.caretPosition;
 
-        if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+        switch (tkey.state)
         {
-            int i1 = inputField.selectionAnchorPosition;
-            int i2 = inputField.selectionFocusPosition;
-            if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
-            if (0 <= i1 && i2 <= s.Length)
-            {
-                s = s.Remove(i1, i2 - i1);
-                pos = i1;
-                remove = false;
-            }
+            case KeyboardClicker.EKeyState.Preview:
+                string s = inputField.text;
+                int pos = inputField.caretPosition;
+
+                if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+                {
+                    int i1 = inputField.selectionAnchorPosition;
+                    int i2 = inputField.selectionFocusPosition;
+                    if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
+                    if (0 <= i1 && i2 <= s.Length)
+                    {
+                        s = s.Remove(i1, i2 - i1);
+                        pos = i1;
+                        last_typed = null;
+                    }
+                }
+
+                if (pos < 0) pos = 0;
+                if (pos > s.Length) pos = s.Length;
+
+                if (last_typed != null && last_typed_pos == pos - last_typed.Length &&
+                        last_typed_pos + last_typed.Length <= s.Length &&
+                        s.Substring(last_typed_pos, last_typed.Length) == last_typed)
+                {
+                    s = s.Remove(last_typed_pos, last_typed.Length);
+                    pos = last_typed_pos;
+                }
+
+                string add = tkey.key;
+                inputField.text = s.Insert(pos, add);
+                inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos + add.Length;
+                last_typed = add.Length > 0 ? add : null;
+                last_typed_pos = pos;
+                break;
+
+            case KeyboardClicker.EKeyState.Confirm:
+                last_typed = null;
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Enter:
+                original_text = inputField.text;
+                inputField.DeactivateInputField();    /* in a Dialog, this sends the OnChange event */
+                inputField.ActivateInputField();
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Esc:
+                inputField.text = original_text;
+                inputField.selectionAnchorPosition = 0;
+                inputField.caretPosition = inputField.selectionFocusPosition = original_text.Length;
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Backspace:
+                s = inputField.text;
+                int stop = inputField.caretPosition;
+                int start = stop - 1;
+                
+                if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+                {
+                    start = inputField.selectionAnchorPosition;
+                    stop = inputField.selectionFocusPosition;
+                    if (start > stop) { int tmp = start; start = stop; stop = tmp; }
+                }
+
+                if (start < 0) start = 0;
+                if (stop > s.Length) stop = s.Length;
+                if (start < stop)
+                {
+                    inputField.text = s.Remove(start, stop - start);
+                    inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = start;
+                }
+                break;
         }
-
-        if (pos < 0) pos = 0;
-        if (pos > s.Length) pos = s.Length;
-
-        if (remove && last_typed != null && last_typed_pos == pos - last_typed.Length &&
-                last_typed_pos + last_typed.Length <= s.Length &&
-                s.Substring(last_typed_pos, last_typed.Length) == last_typed)
-        {
-            s = s.Remove(last_typed_pos, last_typed.Length);
-            pos = last_typed_pos;
-        }
-        inputField.text = s.Insert(pos, add);
-        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos + add.Length;
-        last_typed = add.Length > 0 ? add : null;
-        last_typed_pos = pos;
-    }
-
-    public void TypeKey(string key)
-    {
-        if (key == "\n")
-        {
-            InputField inputField = GetComponent<InputField>();
-            original_text = inputField.text;
-            inputField.DeactivateInputField();    /* in a Dialog, this sends the OnChange event */
-            inputField.ActivateInputField();
-        }
-        else if (key == "\x1b")
-        {
-            InputField inputField = GetComponent<InputField>();
-            inputField.text = original_text;
-            inputField.DeactivateInputField();    /* xxx sends OnChange too, even though there is no change */
-            inputField.ActivateInputField();
-        }
-        else
-            EnterText(key);
-    }
-
-    public void TypeKeyReplacement(string newkey)
-    {
-        EnterText(newkey, remove: true);
-    }
-
-    public void TypeBackspace()
-    {
-        InputField inputField = GetComponent<InputField>();
-        string s = inputField.text;
-        int pos = inputField.caretPosition - 1;
-        int length = 1;
-
-        if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
-        {
-            int i1 = inputField.selectionAnchorPosition;
-            int i2 = inputField.selectionFocusPosition;
-            if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
-            if (0 <= i1 && i2 <= s.Length)
-            {
-                pos = i1;
-                length = i2 - i1;
-            }
-        }
-
-        if (pos < 0) return;
-        if (pos + length > s.Length) return;
-
-        inputField.text = s.Remove(pos, length);
-        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos;
-        last_typed = null;
     }
 }
