@@ -323,17 +323,20 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
     void SendTypeKey(string key)
     {
-        keyboardHandler.SendMessage("TypeKey", key, SendMessageOptions.RequireReceiver);
+        if (keyboardHandler != null)
+            keyboardHandler.SendMessage("TypeKey", key, SendMessageOptions.RequireReceiver);
     }
 
     void SendTypeKeyReplacement(string newkey)
     {
-        keyboardHandler.SendMessage("TypeKeyReplacement", newkey, SendMessageOptions.RequireReceiver);
+        if (keyboardHandler != null)
+            keyboardHandler.SendMessage("TypeKeyReplacement", newkey, SendMessageOptions.RequireReceiver);
     }
 
     void SendTypeBackspace()
     {
-        keyboardHandler.SendMessage("TypeBackspace", null, SendMessageOptions.RequireReceiver);
+        if (keyboardHandler != null)
+            keyboardHandler.SendMessage("TypeBackspace", null, SendMessageOptions.RequireReceiver);
     }
 
     void KeyCombine(Local local, string k, bool replacement)
