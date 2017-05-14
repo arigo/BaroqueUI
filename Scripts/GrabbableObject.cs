@@ -83,7 +83,7 @@ namespace BaroqueUI
             return result;
         }
 
-        void ChangeColor(Color color)
+        protected void ChangeColor(Color color)
         {
             /* To change the color of the grabbed object, we hack around and change all renderer's
              * "_Color" property.
