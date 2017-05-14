@@ -8,15 +8,16 @@ using BaroqueUI;
 public class EnterDemo2 : MonoBehaviour
 {
     public InputField inputField;
-    string last_typed;
-    int last_typed_pos;
+
+    string original_text;
 
     void Start()
     {
+        original_text = inputField.text;
         inputField.ActivateInputField();
     }
 
-    void EnterText(string add, bool remove = false)
+    void PreviewKey(string add)
     {
         string s = inputField.text;
         int pos = inputField.caretPosition;
@@ -30,59 +31,78 @@ public class EnterDemo2 : MonoBehaviour
             {
                 s = s.Remove(i1, i2 - i1);
                 pos = i1;
-                remove = false;
             }
         }
-        
+
         if (pos < 0) pos = 0;
         if (pos > s.Length) pos = s.Length;
 
-        if (remove && last_typed != null && last_typed_pos == pos - last_typed.Length &&
-                last_typed_pos + last_typed.Length <= s.Length &&
-                s.Substring(last_typed_pos, last_typed.Length) == last_typed)
-        {
-            s = s.Remove(last_typed_pos, last_typed.Length);
-            pos = last_typed_pos;
-        }
         inputField.text = s.Insert(pos, add);
-        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos + add.Length;
-        last_typed = add.Length > 0 ? add : null;
-        last_typed_pos = pos;
+        inputField.caretPosition = pos + add.Length;
+        inputField.selectionAnchorPosition = pos;
+        inputField.selectionFocusPosition = pos + add.Length;
     }
 
-    public void TypeKey(string key)
+    void ConfirmKey()
     {
-        EnterText(key);
+        inputField.selectionAnchorPosition = inputField.selectionFocusPosition = inputField.caretPosition;
+        inputField.ForceLabelUpdate();
     }
 
-    public void TypeKeyReplacement(string newkey)
+    public void TypeKey(KeyboardClicker.TypeKey tkey)
     {
-        EnterText(newkey, remove: true);
-    }
-
-    public void TypeBackspace()
-    {
-        string s = inputField.text;
-        int pos = inputField.caretPosition - 1;
-        int length = 1;
-
-        if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+        switch (tkey.state)
         {
-            int i1 = inputField.selectionAnchorPosition;
-            int i2 = inputField.selectionFocusPosition;
-            if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
-            if (0 <= i1 && i2 <= s.Length)
-            {
-                pos = i1;
-                length = i2 - i1;
-            }
+            case KeyboardClicker.EKeyState.Preview:
+                PreviewKey(tkey.key);
+                break;
+
+            case KeyboardClicker.EKeyState.Confirm:
+                ConfirmKey();
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Enter:
+                if (inputField.multiLine)
+                {
+                    PreviewKey("\n");
+                    ConfirmKey();
+                }
+                else
+                {
+                    original_text = inputField.text;
+                    inputField.caretPosition = original_text.Length;
+                    inputField.selectionAnchorPosition = 0;
+                    inputField.selectionFocusPosition = original_text.Length;
+                }
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Esc:
+                inputField.text = original_text;
+                inputField.caretPosition = original_text.Length;
+                inputField.selectionAnchorPosition = 0;
+                inputField.selectionFocusPosition = original_text.Length;
+                break;
+
+            case KeyboardClicker.EKeyState.Special_Backspace:
+                string s = inputField.text;
+                int stop = inputField.caretPosition;
+                int start = stop - 1;
+
+                if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
+                {
+                    start = inputField.selectionAnchorPosition;
+                    stop = inputField.selectionFocusPosition;
+                    if (start > stop) { int tmp = start; start = stop; stop = tmp; }
+                }
+
+                if (start < 0) start = 0;
+                if (stop > s.Length) stop = s.Length;
+                if (start < stop)
+                {
+                    inputField.text = s.Remove(start, stop - start);
+                    inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = start;
+                }
+                break;
         }
-
-        if (pos < 0) return;
-        if (pos + length > s.Length) return;
-
-        inputField.text = s.Remove(pos, length);
-        inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos;
-        last_typed = null;
     }
 }
