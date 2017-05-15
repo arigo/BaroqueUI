@@ -3,46 +3,54 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using BaroqueUI;
+using UnityEngine.Events;
 using UnityEngine.EventSystems;
+using BaroqueUI;
 using System.Runtime.InteropServices;
 
 
-public class KeyboardClicker : ConcurrentControllerTracker
+[Serializable]
+public class KeyboardTypingEvent : UnityEvent<KeyboardClicker.EKeyState, string>
 {
-    /* This script sends to 'keyboardHandler' the following message:
-          TypeKey(TypeKey key);
+    /* KeyboardClicker sends a KeyboardTypingEvent to report actions about the VR keyboard keys.
 
        Apart from the special keys (enter, esc, tab, backspace), all regular keys are sent in the
        following sequence:
-       - TypeKey(Preview);
-       - optionally more TypeKey(Preview), each replacing the current key;
-       - one final TypeKey(Confirm), always with the same key as the most recent TypeKey(Preview).
+       - Event(Preview);
+       - optionally more Event(Preview), each replacing the current key;
+       - one final Event(Confirm), always with the same key as the most recent Event(Preview).
 
-       The special keys cannot occur between a TypeKey(Preview) and a TypeKey(Confirm).
+       The special keys cannot occur between a Event(Preview) and a Event(Confirm).
        This script will always confirm a previewed key before that.  In one case this script can
-       cancel a previewed key by emitting TypeKey({Preview, ""}) and TypeKey({Confirm, ""}).
+       cancel a previewed key by emitting Event(Preview, "") and Event(Confirm, "").
 
-       Dead keys are sent as, say, TypeKey({Preview, "^"}).  Then it might be replaced with a
-       TypeKey({Preview, "â"}) followed by TypeKey({Confirm, "â"}).  Or the dead key alone can be
+       Dead keys are sent as, say, Event(Preview, "^").  Then it might be replaced with a
+       Event(Preview, "â") followed by Event(Confirm, "â").  Or the dead key alone can be
        confirmed, e.g. if we press the space bar or a letter that can't combine with the dead key.
 
        There are two different ways to use this:
 
        * If you can easily accept corrections in output, e.g. if it is sent to an inputField,
          then write the Previewed key immediately but replace them with further inputs until
-         you get the Confirm.  Maybe use a different color or font for unconfirmed keys.
+         you get the Confirm.  The Previewed key can be selected; then it is natural that they
+         are replaced when different keys are Previewed, and gives some color feedback.
 
-       * If you can't, then ignore Preview and only emit keys when you get the Confirm.
-
+       * If you can't correct the output, then ignore Preview and only emit keys when you get
+         the Confirm.
      */
-    public enum EKeyState { Preview, Confirm, Special_Backspace, Special_Tab, Special_Enter, Special_Esc };
-    public struct TypeKey { public EKeyState state; public string key; };
+}
 
-    public GameObject keyboardHandler;
+
+public class KeyboardClicker : ConcurrentControllerTracker
+{
+    public enum EKeyState { Preview, Confirm, Special_Backspace, Special_Tab, Special_Enter, Special_Esc };
+
+    public KeyboardTypingEvent onKeyboardTyping;
     public bool enableTabKey = true;
     public bool enableEnterKey = true;
     public bool enableEscKey = false;
+    public UnityEvent onEnter, onEsc;
+    public float controllerPriority = 200;
 
 
     [DllImport("user32.dll")]
@@ -351,14 +359,7 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
     void SendKey(EKeyState state, string key)
     {
-        if (keyboardHandler != null)
-        {
-            keyboardHandler.SendMessage("TypeKey",
-                new TypeKey { state = state, key = key },
-                SendMessageOptions.RequireReceiver);
-        }
-        else
-            Debug.Log("Keyboard would send a TypeKey { state=" + state + ", key=\"" + key + "\"}");
+        onKeyboardTyping.Invoke(state, key);
     }
 
     void SpecialKey(EKeyState state, string key)
@@ -672,131 +673,6 @@ public class KeyboardClicker : ConcurrentControllerTracker
 
     public override float GetPriority(Controller controller)
     {
-        return 200;
-    }
-}
-
-
-internal class KeyboardActivator : MonoBehaviour, ISelectHandler, IDeselectHandler
-{
-    /* This component is automatically added to InputFields by the code in Dialog. 
-     * Whenever the InputField gets the selection, it displays a VR keyboard and
-     * handle the key presses.
-     */
-    public KeyboardClicker keyboard { get; private set; }
-    string original_text;
-    string last_typed;
-    int last_typed_pos;
-
-    public void OnSelect(BaseEventData eventData)
-    {
-        OnDisable();
-
-        GameObject keyboard_prefab = Resources.Load<GameObject>("BaroqueUI/Keyboard");
-
-        Vector3 pos = transform.position - 0.12f * transform.forward - 0.15f * transform.up;
-        Quaternion rotation = Quaternion.LookRotation(transform.forward);
-        rotation = Quaternion.Euler(43, rotation.eulerAngles.y, 0);
-        keyboard = Instantiate(keyboard_prefab, pos, rotation).GetComponent<KeyboardClicker>();
-        keyboard.keyboardHandler = gameObject;
-        keyboard.enableEnterKey = true;
-        keyboard.enableTabKey = false;
-        keyboard.enableEscKey = true;
-
-        InputField inputField = GetComponent<InputField>();
-        original_text = inputField.text;
-        last_typed = null;
-    }
-
-    public void OnDeselect(BaseEventData eventData)
-    {
-        OnDisable();
-    }
-
-    public void OnDisable()
-    {
-        if (keyboard != null && keyboard)
-            Destroy(keyboard.gameObject);
-        keyboard = null;
-    }
-
-    public void TypeKey(KeyboardClicker.TypeKey tkey)
-    {
-        InputField inputField = GetComponent<InputField>();
-
-        switch (tkey.state)
-        {
-            case KeyboardClicker.EKeyState.Preview:
-                string s = inputField.text;
-                int pos = inputField.caretPosition;
-
-                if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
-                {
-                    int i1 = inputField.selectionAnchorPosition;
-                    int i2 = inputField.selectionFocusPosition;
-                    if (i1 > i2) { int i3 = i1; i1 = i2; i2 = i3; }
-                    if (0 <= i1 && i2 <= s.Length)
-                    {
-                        s = s.Remove(i1, i2 - i1);
-                        pos = i1;
-                        last_typed = null;
-                    }
-                }
-
-                if (pos < 0) pos = 0;
-                if (pos > s.Length) pos = s.Length;
-
-                if (last_typed != null && last_typed_pos == pos - last_typed.Length &&
-                        last_typed_pos + last_typed.Length <= s.Length &&
-                        s.Substring(last_typed_pos, last_typed.Length) == last_typed)
-                {
-                    s = s.Remove(last_typed_pos, last_typed.Length);
-                    pos = last_typed_pos;
-                }
-
-                string add = tkey.key;
-                inputField.text = s.Insert(pos, add);
-                inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = pos + add.Length;
-                last_typed = add.Length > 0 ? add : null;
-                last_typed_pos = pos;
-                break;
-
-            case KeyboardClicker.EKeyState.Confirm:
-                last_typed = null;
-                break;
-
-            case KeyboardClicker.EKeyState.Special_Enter:
-                original_text = inputField.text;
-                inputField.DeactivateInputField();    /* in a Dialog, this sends the OnChange event */
-                inputField.ActivateInputField();
-                break;
-
-            case KeyboardClicker.EKeyState.Special_Esc:
-                inputField.text = original_text;
-                inputField.selectionAnchorPosition = 0;
-                inputField.caretPosition = inputField.selectionFocusPosition = original_text.Length;
-                break;
-
-            case KeyboardClicker.EKeyState.Special_Backspace:
-                s = inputField.text;
-                int stop = inputField.caretPosition;
-                int start = stop - 1;
-                
-                if (inputField.selectionAnchorPosition != inputField.selectionFocusPosition)
-                {
-                    start = inputField.selectionAnchorPosition;
-                    stop = inputField.selectionFocusPosition;
-                    if (start > stop) { int tmp = start; start = stop; stop = tmp; }
-                }
-
-                if (start < 0) start = 0;
-                if (stop > s.Length) stop = s.Length;
-                if (start < stop)
-                {
-                    inputField.text = s.Remove(start, stop - start);
-                    inputField.caretPosition = inputField.selectionAnchorPosition = inputField.selectionFocusPosition = start;
-                }
-                break;
-        }
+        return controllerPriority;
     }
 }

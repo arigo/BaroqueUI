@@ -11,8 +11,14 @@ namespace BaroqueUI
 {
     public class Dialog : ControllerTracker
     {
+        [Tooltip("If checked, the dialog box is already placed in world space.  Should be unchecked for pop-ups.")]
         public bool alreadyPositioned = false;
-        public bool noExtraKeyboard = false;
+
+        [Tooltip("If checked, the dialog box automatically shows and hides a keyboard (if it has got any InputField).  " +
+                 "Otherwise, we assume a keyboard is already connected.")]
+        public bool automaticKeyboard = true;
+
+        [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
@@ -82,7 +88,7 @@ namespace BaroqueUI
         /*******************************************************************************************/
 
         static int UI_layer = -1;
-        static Dictionary<Dialog, bool> active_dialogs;
+        static Dictionary<Canvas, Dialog> active_dialogs;
 
         RenderTexture render_texture;
         Camera ortho_camera;
@@ -94,15 +100,17 @@ namespace BaroqueUI
             transform.localScale = Vector3.one / unitsPerMeter;
             alreadyPositioned = true;
             gameObject.SetActive(true);
+            StartCoroutine(CoSetInitialSelection());
         }
 
         void PrepareForRendering()
         {
-            /* XXX picking one hopefully-unused layer number... */
+            /* XXX picking two hopefully-unused layer numbers... */
             if (UI_layer < 0)
             {
-                for (int i = 30; i >= 1; i--)
-                    if (LayerMask.LayerToName(i) == null || LayerMask.LayerToName(i) == "")
+                for (int i = 29; i >= 1; i--)
+                    if ((LayerMask.LayerToName(i) == null || LayerMask.LayerToName(i) == "") &&
+                        (LayerMask.LayerToName(i + 1) == null || LayerMask.LayerToName(i + 1) == ""))
                     {
                         UI_layer = i;
                         break;
@@ -119,6 +127,7 @@ namespace BaroqueUI
                 ortho_camera = tr1.GetComponent<Camera>();
             else
                 ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
+            ortho_camera.enabled = false;
             ortho_camera.transform.SetParent(transform);
             ortho_camera.transform.position = rtr.TransformPoint(
                 rtr.rect.width* (0.5f - rtr.pivot.x),
@@ -127,16 +136,15 @@ namespace BaroqueUI
             ortho_camera.transform.rotation = rtr.rotation;
             ortho_camera.clearFlags = CameraClearFlags.SolidColor;
             ortho_camera.backgroundColor = new Color(1, 1, 1);
-            ortho_camera.cullingMask = 1 << UI_layer;
+            ortho_camera.cullingMask = 2 << UI_layer;
             ortho_camera.orthographic = true;
             ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height* 0.5f, 0).magnitude;
             ortho_camera.nearClipPlane = -10;
             ortho_camera.farClipPlane = 10;
             ortho_camera.targetTexture = render_texture;
 
-            foreach (var tr in GetComponentsInChildren<Transform>())
-                tr.gameObject.layer = UI_layer;
-            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(1 << UI_layer);
+            RecSetLayer(UI_layer);
+            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
 
             quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
             quad.SetParent(transform);
@@ -156,37 +164,57 @@ namespace BaroqueUI
             DestroyImmediate(back_quad.GetComponent<Collider>());
 
             if (active_dialogs == null)
-                active_dialogs = new Dictionary<Dialog, bool>();
-            active_dialogs.Add(this, true);
+                active_dialogs = new Dictionary<Canvas, Dialog>();
+            foreach (var canvas in GetComponentsInChildren<Canvas>())
+            {
+                canvas.worldCamera = ortho_camera;
+                active_dialogs.Add(canvas, this);
+            }
 
             StartCoroutine(UpdateRendering());
         }
 
         void OnDestroy()
         {
-            if (active_dialogs != null)
-                active_dialogs.Remove(this);
+            foreach (var canvas in GetComponentsInChildren<Canvas>())
+                active_dialogs.Remove(canvas);
+            StopAutomaticKeyboard();
+        }
+
+        void RecSetLayer(int layer)
+        {
+            foreach (var canvas in GetComponentsInChildren<Canvas>())
+                canvas.gameObject.layer = layer;
+            foreach (var rend in GetComponentsInChildren<CanvasRenderer>())
+                rend.gameObject.layer = layer;
         }
 
         IEnumerator UpdateRendering()
         {
             while (this && isActiveAndEnabled)
             {
-                List<GameObject> disabled = new List<GameObject>();
+#if false
+                var disabled = new List<Canvas>();
 
-                foreach (Dialog dlg in active_dialogs.Keys)
+                foreach (var kv in active_dialogs)
                 {
-                    if (dlg != this && dlg && dlg.gameObject.activeSelf)
+                    Canvas canvas = kv.Key;
+                    Dialog dlg = kv.Value;
+                    if (/*dlg != this && dlg && dlg.isActiveAndEnabled && canvas.enabled*/ true)
                     {
-                        dlg.gameObject.SetActive(false);
-                        disabled.Add(dlg.gameObject);
+                        canvas.enabled = false;
+                        disabled.Add(canvas);
                     }
                 }
 
                 ortho_camera.Render();
 
-                foreach (GameObject gobj in disabled)
-                    gobj.SetActive(true);
+                foreach (var canvas in disabled)
+                    canvas.enabled = true;
+#endif
+                RecSetLayer(UI_layer + 1);   /* this layer is visible */
+                ortho_camera.Render();
+                RecSetLayer(UI_layer);   /* this layer is not visible any more */
 
                 yield return new WaitForSecondsRealtime(0.05f);
             }
@@ -202,13 +230,10 @@ namespace BaroqueUI
 
             PrepareForRendering();
 
-            foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
-                canvas.worldCamera = ortho_camera;
-
             foreach (InputField inputField in GetComponentsInChildren<InputField>())
             {
-                if (inputField.GetComponent<KeyboardActivator>() == null && !noExtraKeyboard)
-                    inputField.gameObject.AddComponent<KeyboardActivator>();
+                if (inputField.GetComponent<KeyboardVRInput>() == null)
+                    inputField.gameObject.AddComponent<KeyboardVRInput>();
             }
 
             if (GetComponentInChildren<Collider>() == null)
@@ -222,45 +247,29 @@ namespace BaroqueUI
                 coll.size = new Vector3(r.width, r.height, zscale);
                 coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
             }
+
+            StartAutomaticKeyboard();
         }
 
-        void OnEnable()
+        GameObject SetInitialSelection()
         {
             foreach (var selectable in GetComponentsInChildren<Selectable>())
             {
                 if (selectable.interactable)
                 {
-                    StartCoroutine(SetSelected(selectable));
-                    break;
+                    EventSystem.current.SetSelectedGameObject(selectable.gameObject, null);
+                    selectable.Select();
+                    return selectable.gameObject;
                 }
             }
+            return null;
         }
 
-        IEnumerator SetSelected(Selectable selectable)
+        IEnumerator CoSetInitialSelection()
         {
             yield return new WaitForSecondsRealtime(0.1f);   /* doesn't work if done immediately :-( */
-            if (selectable && selectable.isActiveAndEnabled)
-            {
-                EventSystem.current.SetSelectedGameObject(selectable.gameObject, null);
-                selectable.Select();
-            }
+            SetInitialSelection();
         }
-
-#if false
-        public UnityAction onEnable, onDisable;
-
-        void OnEnable()
-        {
-            if (onEnable != null)
-                onEnable();
-        }
-
-        void OnDisable()
-        {
-            if (onDisable != null)
-                onDisable();
-        }
-#endif
 
         static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
         {
@@ -474,6 +483,61 @@ namespace BaroqueUI
             if (!plane.Raycast(ray, out enter))
                 enter = 0;
             return 100 + enter;
+        }
+
+
+        /****************************************************************************************/
+
+        KeyboardClicker auto_keyboard;
+
+        void StartAutomaticKeyboard()
+        {
+            if (automaticKeyboard && GetComponentInChildren<KeyboardVRInput>() != null && auto_keyboard == null)
+            {
+                GameObject keyboard_prefab = Resources.Load<GameObject>("BaroqueUI/Keyboard");
+                RectTransform rtr = transform as RectTransform;
+                Vector3 vcorr = rtr.TransformVector(new Vector3(0, rtr.rect.height * rtr.pivot.y, 0));
+
+                Vector3 pos = transform.position - 0.08f * transform.forward - 0.09f * transform.up - vcorr;
+                Quaternion rotation = Quaternion.LookRotation(transform.forward);
+                rotation = Quaternion.Euler(41.6335f, rotation.eulerAngles.y, 0);
+                // note: 41.6335 = atan(0.08/0.09)
+                auto_keyboard = Instantiate(keyboard_prefab, pos, rotation).GetComponent<KeyboardClicker>();
+                auto_keyboard.enableEnterKey = true;
+                auto_keyboard.enableTabKey = false;
+                auto_keyboard.enableEscKey = true;
+
+                auto_keyboard.onKeyboardTyping.AddListener(KeyboardTyping);
+            }
+        }
+
+        void StopAutomaticKeyboard()
+        {
+            /* NB. can't use OnEnable/OnDisable, because we enable and disable the dialog 
+             * internally for rendering purposes */
+            if (auto_keyboard != null && auto_keyboard)
+            {
+                Destroy(auto_keyboard.gameObject);
+            }
+            auto_keyboard = null;
+        }
+
+        public void KeyboardTyping(KeyboardClicker.EKeyState state, string key)
+        {
+            GameObject gobj = EventSystem.current.currentSelectedGameObject;
+            if (gobj != null && gobj && gobj.transform.IsChildOf(transform))
+            {
+                /* the selection is already inside this dialog */
+            }
+            else
+            {
+                gobj = SetInitialSelection();
+                if (gobj == null)
+                    return;
+            }
+            var keyboardVrInput = gobj.GetComponent<KeyboardVRInput>();
+            if (keyboardVrInput != null)
+                keyboardVrInput.KeyboardTyping(state, key);
         }
     }
 }
