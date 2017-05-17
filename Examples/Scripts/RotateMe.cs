@@ -21,11 +21,4 @@ public class RotateMe : ControllerTracker
             transform.rotation = Quaternion.Euler(v);
         });
     }
-
-    public void HandleRotation(float angle)
-    {
-        Vector3 v = transform.rotation.eulerAngles;
-        v.y = angle;
-        transform.rotation = Quaternion.Euler(v);
-    }
 }

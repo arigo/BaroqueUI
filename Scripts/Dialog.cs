@@ -34,6 +34,17 @@ namespace BaroqueUI
             return (T)_Get(widget_name);
         }
 
+        public void SetClick(string clickable_widget_name, UnityAction onClick)
+        {
+            _Set(clickable_widget_name, null, onClick);
+        }
+
+        public void SetChoices(string choice_widget_name, List<string> choices)
+        {
+            var descr = FindWidget(choice_widget_name);
+            descr.setter_extra(choices);
+        }
+
         public Dialog MakePopup(Controller controller, GameObject requester = null)
         {
             return ShouldShowPopup(this, requester) ? Instantiate<Dialog>(this).DoShowPopup(controller) : null;
@@ -92,6 +103,7 @@ namespace BaroqueUI
             internal setter_fn setter;
             internal deleter_fn detach;
             internal setter_fn attach;
+            internal setter_fn setter_extra;
         }
 
         WidgetDescr FindWidget(string widget_name)
@@ -123,6 +135,36 @@ namespace BaroqueUI
                     setter = (value) => inputField.text = (string)value,
                     detach = () => inputField.onEndEdit.RemoveAllListeners(),
                     attach = (callback) => inputField.onEndEdit.AddListener((UnityAction<string>)callback),
+                };
+
+            Button button = tr.GetComponent<Button>();
+            if (button != null)
+                return new WidgetDescr() {
+                    getter = () => null,
+                    setter = (ignored) => { },
+                    detach = () => button.onClick.RemoveAllListeners(),
+                    attach = (callback) => button.onClick.AddListener((UnityAction)callback),
+                };
+
+            Toggle toggle = tr.GetComponent<Toggle>();
+            if (toggle != null)
+                return new WidgetDescr()
+                {
+                    getter = () => toggle.isOn,
+                    setter = (value) => toggle.isOn = (bool)value,
+                    detach = () => toggle.onValueChanged.RemoveAllListeners(),
+                    attach = (callback) => toggle.onValueChanged.AddListener((UnityAction<bool>)callback),
+                };
+
+            Dropdown dropdown = tr.GetComponent<Dropdown>();
+            if (dropdown != null)
+                return new WidgetDescr()
+                {
+                    getter = () => dropdown.value,
+                    setter = (value) => dropdown.value = (int)value,
+                    setter_extra = (value) => { dropdown.ClearOptions(); dropdown.AddOptions(value as List<string>); },
+                    detach = () => dropdown.onValueChanged.RemoveAllListeners(),
+                    attach = (callback) => dropdown.onValueChanged.AddListener((UnityAction<int>)callback),
                 };
 
             throw new NotImplementedException(widget_name);
