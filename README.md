@@ -58,14 +58,10 @@ In a few steps:
 
 
 
-Reference
+BaroqueUI
 ---------
 
-
-BaroqueUI
-+++++++++
-
-This class contains only static methods.  The most important ones:
+This class contains only static methods.  The most important ones are:
 
 * ``BaroqueUI.BaroqueUI.GetHeadTransform()`` returns the Transform of
   the headset.
@@ -75,7 +71,7 @@ This class contains only static methods.  The most important ones:
 
 
 Controller
-++++++++++
+----------
 
 ``Controller`` is a component that installs itself on the ``Controller
 (left)`` and ``Controller (right)`` objects in ``SteamVR``.  Public
@@ -158,7 +154,7 @@ instantiating it if it is still null.
 
 
 BaseControllerTracker
-+++++++++++++++++++++
+---------------------
 
 For every object in the scene that you want to interact with, you need
 to make a script and change its parent from ``MonoBehaviour`` to one of
@@ -211,7 +207,7 @@ this area has another usage for the touchpad.
 
 
 ControllerTracker
-+++++++++++++++++
+-----------------
 
 The most common class to inherit from.  This version simplifies what
 occurs if both controllers are in the interaction area at the same time.
@@ -239,7 +235,7 @@ guarantees exist, like that ``OnTriggerDrag`` is always called between
 
 
 ConcurrentControllerTracker
-+++++++++++++++++++++++++++
+---------------------------
 
 When using ``ConcurrentControllerTracker`` as the base class instead of
 ``ControllerTracker``, you get more flexibility but need to be more
@@ -258,7 +254,7 @@ See also ``Controller.GetAdditionalData()``.
 
 
 GrabbableObject
-+++++++++++++++
+---------------
 
 This is meant as an example inheriting from ``ControllerTracker`` that
 you can just drop into any GameObject with a collider.  The object can
@@ -268,10 +264,10 @@ code as an example of using the ``OnXxx`` methods.
 
 
 Dialog
-++++++
+------
 
 For dialog boxes.  Typically, you'd make the dialog box by creating a
-Unity ``Canvas`` component and filling it with dialog items like
+Unity ``Canvas`` component and filling it with UI widgets like
 ``InputField`` or ``Text``.  To make the Canvas usable from BaroqueUI,
 you need to change its "Render Mode" to "World Space" and stick an extra
 ``Dialog`` component in the Canvas.
@@ -281,36 +277,78 @@ some action to request it; and "pre-positioned" dialogs which are part
 of the scene in the first place.  This is the meaning of the
 ``alreadyPositioned`` check box in the inspector for ``Dialog``.
 
+        public Dialog MakePopup(Controller controller, GameObject requester = null)
+
+This method of Dialog objects is used for pop-ups.  It duplicates the
+GameObject associated with the Dialog, and position it appropriately for
+the controller.  If 'requester' is not null, we use that as the
+"attached" object; otherwise, we use the original Dialog object
+directly.  The "attached" object is only used when asking for a pop-up
+twice: if you ask again for a pop-up with the same attached object, then
+the second time is interpreted as a request to close it, and the
+MakePopup method will return ``null`` in this case.
+
 Note that typically, Canvases are extremely large when compared with the
 rest of the scene.  You can ignore that for dialogs that are not
-``alreadyPositioned``: they will be scaled down automatically when they
-pop up.  For the dialogs that are ``alreadyPositioned``, you need to
-scale they them down while positioning them in the first place.
+``alreadyPositioned``: they will be scaled down automatically by
+MakePopup().  For the dialogs that are ``alreadyPositioned``, you need
+to scale them down while positioning them in the first place.
 
-(...)
+Dialog objects have these additional methods to read or write the value
+displayed by UI widgets:
 
+        public T Get<T>(string widget_name);
+        public void Set<T>(string widget_name, T value,
+                           UnityAction<T> onChange = null);
 
-Popup
-+++++
+Reads or writes the value in the widget with the give name (the name
+of the corresponding GameObject).  The type ``T`` must be of a type
+appropriate for the widget type.  Currently supported:
 
-(...)
+* Text: reads or writes a string
+* InputField: reads or writes a string
+* Slider: reads or writes a float
+* Toggle (checkboxes): reads or writes a bool
+* Dropdown: reads or writes an integer (the index of the selected item)
+
+The optional ``onChange`` function is called when the value is changed
+by the user.  Note that the next call to ``Set<T>()`` removes the
+previously set ``onChange`` callback; it must be specified in all calls
+to ``Set<T>()`` to remain in effect.  If given as ``null``, it is simply
+removed.
+
+For pop-up dialogs, you need to call ``Set<T>()`` on the copy returned
+by ``MakePopup()``.
+
+For buttons, you need this variant, with no value and an argument-less
+callback:
+
+        public void SetClick(string clickable_widget_name, UnityAction onClick);
+
+For dropdown lists that you need to populate from the script (as opposed to 
+having it pre-populated in the inspector), use this method:
+
+        public void SetChoices(string choice_widget_name, List<string> choices);
+
 
 
 Menu
-++++
+----
 
-(...)
+For menus.  Usage is:
+
+        var menu = new Menu {
+            { "Red", () => mat.color = Color.red},
+            { "Green", () => mat.color = Color.green},
+            { "Blue", () => mat.color = new Color(0.25f, 0.35f, 1)},
+            { "White", () => mat.color = Color.white},
+        };
+        menu.MakePopup(controller, gameObject);
 
 
+KeyboardClicker, KeyboardVRInput
+--------------------------------
 
-KeyboardClicker
-+++++++++++++++
-
-(...)
-
-
-KeyboardVRInput
-+++++++++++++++
-
-(...)
-
+For keyboards.  Mostly, it should show up automatically on InputFields
+from dialog boxes.  To add a keyboard manually into the scene, look into
+the Prefabs.

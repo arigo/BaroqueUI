@@ -13,7 +13,7 @@ namespace BaroqueUI
     {
         [Tooltip("If checked, the dialog box is already placed in world space.  " +
                  "If left unchecked, the dialog box is hidden in a different layer " +
-                 "(it can be either in the scene or a prefab) and is used with controller.MakePopup().")]
+                 "(it can be either in the scene or a prefab) and is used with MakePopup().")]
         public bool alreadyPositioned = false;
 
         [Tooltip("If checked, the dialog box automatically shows and hides a keyboard (if it has got any InputField).  " +
