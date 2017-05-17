@@ -10,7 +10,7 @@ public class RotateMe : ControllerTracker
 
     public override void OnTriggerDown(Controller controller)
     {
-        var popup = controller.MakePopup(dialogSetAngle, gameObject);
+        var popup = dialogSetAngle.MakePopup(controller, gameObject);
         if (popup == null)
             return;
 

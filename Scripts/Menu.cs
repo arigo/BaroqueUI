@@ -44,7 +44,12 @@ namespace BaroqueUI
             return menu_items.GetEnumerator();
         }
 
-        public Dialog CreateDialog()
+        public Dialog MakePopup(Controller controller, GameObject requester = null)
+        {
+            return Dialog.ShouldShowPopup(this, requester) ? CreateDialog().DoShowPopup(controller) : null;
+        }
+
+        Dialog CreateDialog()
         {
             const float OVERLAP = 2;
 

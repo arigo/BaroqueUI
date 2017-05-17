@@ -128,15 +128,6 @@ namespace BaroqueUI
             return locals[index];
         }
 
-        public Dialog MakePopup(Dialog dialogTemplate, GameObject requester = null)
-        {
-            return ShouldShowPopup(dialogTemplate, requester) ? DoShowPopup(Instantiate<Dialog>(dialogTemplate)) : null;
-        }
-        public Dialog MakePopup(Menu menu, GameObject requester = null)
-        {
-            return ShouldShowPopup(menu, requester) ? DoShowPopup(menu.CreateDialog()) : null;
-        }
-
 
         /***************************************************************************************/
 
@@ -601,46 +592,6 @@ namespace BaroqueUI
                 if (hint.tobj.text != hint.text)
                     hint.tobj.text = hint.text;
             }
-        }
-
-
-        /*****************************************************************************************/
-
-        static Dialog popupShown;   /* globally, a single one for now */
-        static object popupRequester;
-
-        bool ShouldShowPopup(object model, GameObject requester)
-        {
-            /* If 'requester' is not null, use that to identify the owner of the dialog box
-             * and hide if called a second time.  If it is null, then use instead 'model'
-             * (the dialog template or the Menu instance). */
-            object new_requester = (requester != null ? requester : model);
-            bool should_hide = false;
-            if (popupShown != null && popupShown)
-            {
-                should_hide = (popupRequester == new_requester);
-                if (should_hide)
-                    new_requester = null;
-                Destroy(popupShown.gameObject);
-            }
-            popupShown = null;
-            popupRequester = new_requester;
-            return !should_hide;
-        }
-
-        Dialog DoShowPopup(Dialog popup)
-        {
-            Transform tr = popup.transform;
-
-            Vector3 head_forward = position - BaroqueUI.GetHeadTransform().position;
-            Vector3 fw = forward + head_forward.normalized;
-            fw.y = 0;
-            tr.forward = fw;
-            tr.position = position + 0.15f * tr.forward;
-
-            popup.DisplayDialog();
-            popupShown = popup;
-            return popup;
         }
     }
 }

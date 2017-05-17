@@ -34,6 +34,49 @@ namespace BaroqueUI
             return (T)_Get(widget_name);
         }
 
+        public Dialog MakePopup(Controller controller, GameObject requester = null)
+        {
+            return ShouldShowPopup(this, requester) ? Instantiate<Dialog>(this).DoShowPopup(controller) : null;
+        }
+
+
+        /*****************************************************************************************/
+
+        static Dialog popupShown;   /* globally, a single one for now */
+        static object popupRequester;
+
+        static internal bool ShouldShowPopup(object model, GameObject requester)
+        {
+            /* If 'requester' is not null, use that to identify the owner of the dialog box
+             * and hide if called a second time.  If it is null, then use instead 'model'
+             * (the dialog template or the Menu instance). */
+            object new_requester = (requester != null ? requester : model);
+            bool should_hide = false;
+            if (popupShown != null && popupShown)
+            {
+                should_hide = (popupRequester == new_requester);
+                if (should_hide)
+                    new_requester = null;
+                Destroy(popupShown.gameObject);
+            }
+            popupShown = null;
+            popupRequester = new_requester;
+            return !should_hide;
+        }
+
+        internal Dialog DoShowPopup(Controller controller)
+        {
+            Vector3 head_forward = controller.position - BaroqueUI.GetHeadTransform().position;
+            Vector3 fw = controller.forward + head_forward.normalized;
+            fw.y = 0;
+            transform.forward = fw;
+            transform.position = controller.position + 0.15f * transform.forward;
+
+            DisplayDialog();
+            popupShown = this;
+            return this;
+        }
+
 
         /*****************************************************************************************/
 
@@ -105,7 +148,6 @@ namespace BaroqueUI
         /*******************************************************************************************/
 
         static int UI_layer = -1;
-        static Dictionary<Canvas, Dialog> active_dialogs;
 
         RenderTexture render_texture;
         Camera ortho_camera;
@@ -180,21 +222,14 @@ namespace BaroqueUI
             back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
             DestroyImmediate(back_quad.GetComponent<Collider>());
 
-            if (active_dialogs == null)
-                active_dialogs = new Dictionary<Canvas, Dialog>();
             foreach (var canvas in GetComponentsInChildren<Canvas>())
-            {
                 canvas.worldCamera = ortho_camera;
-                active_dialogs.Add(canvas, this);
-            }
 
             StartCoroutine(UpdateRendering());
         }
 
         void OnDestroy()
         {
-            foreach (var canvas in GetComponentsInChildren<Canvas>())
-                active_dialogs.Remove(canvas);
             StopAutomaticKeyboard();
         }
 

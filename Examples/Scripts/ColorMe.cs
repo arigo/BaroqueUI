@@ -18,6 +18,6 @@ public class ColorMe : ControllerTracker
             { "White", () => mat.color = Color.white},
         };
 
-        controller.MakePopup(menu, gameObject);
+        menu.MakePopup(controller, gameObject);
     }
 }

@@ -10,7 +10,7 @@ public class NameMe : ControllerTracker
 
     public override void OnTriggerDown(Controller controller)
     {
-        var popup = controller.MakePopup(dialogSetName, gameObject);
+        var popup = dialogSetName.MakePopup(controller, gameObject);
         if (popup == null)
             return;
 
