@@ -83,6 +83,9 @@ interface:
 
         public Vector3 position;
         public Quaternion rotation;
+        public Vector3 forward;
+        public Vector3 right;
+        public Vector3 up;
         public Vector3 velocity;
         public Vector3 angularVelocity;
 

@@ -11,7 +11,9 @@ namespace BaroqueUI
 {
     public class Dialog : ControllerTracker
     {
-        [Tooltip("If checked, the dialog box is already placed in world space.  Should be unchecked for pop-ups.")]
+        [Tooltip("If checked, the dialog box is already placed in world space.  " +
+                 "If left unchecked, the dialog box is hidden in a different layer " +
+                 "(it can be either in the scene or a prefab) and is used with controller.MakePopup().")]
         public bool alreadyPositioned = false;
 
         [Tooltip("If checked, the dialog box automatically shows and hides a keyboard (if it has got any InputField).  " +
@@ -21,6 +23,21 @@ namespace BaroqueUI
         [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
+
+        public void Set<T>(string widget_name, T value, UnityAction<T> onChange = null)
+        {
+            _Set(widget_name, value, onChange);
+        }
+
+        public T Get<T>(string widget_name)
+        {
+            return (T)_Get(widget_name);
+        }
+
+
+        /*****************************************************************************************/
+
+
         /* XXX internals are very Javascript-ish, full of multi-level callbacks.
          * It could also be done using a class hierarchy but it feels like it would be pages longer. */
         delegate object getter_fn();
@@ -28,10 +45,10 @@ namespace BaroqueUI
         delegate void deleter_fn();
 
         struct WidgetDescr {
-            public getter_fn getter;
-            public setter_fn setter;
-            public deleter_fn detach;
-            public setter_fn attach;
+            internal getter_fn getter;
+            internal setter_fn setter;
+            internal deleter_fn detach;
+            internal setter_fn attach;
         }
 
         WidgetDescr FindWidget(string widget_name)
@@ -68,7 +85,7 @@ namespace BaroqueUI
             throw new NotImplementedException(widget_name);
         }
 
-        public void Set(string widget_name, object value, object onChange = null)
+        void _Set(string widget_name, object value, object onChange = null)
         {
             var descr = FindWidget(widget_name);
             if (onChange != null)
@@ -78,7 +95,7 @@ namespace BaroqueUI
                 descr.attach(onChange);
         }
 
-        public object Get(string widget_name)
+        object _Get(string widget_name)
         {
             var descr = FindWidget(widget_name);
             return descr.getter();
@@ -513,8 +530,6 @@ namespace BaroqueUI
 
         void StopAutomaticKeyboard()
         {
-            /* NB. can't use OnEnable/OnDisable, because we enable and disable the dialog 
-             * internally for rendering purposes */
             if (auto_keyboard != null && auto_keyboard)
             {
                 Destroy(auto_keyboard.gameObject);
