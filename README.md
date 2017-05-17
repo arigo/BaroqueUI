@@ -271,7 +271,7 @@ Dialog
 ++++++
 
 For dialog boxes.  Typically, you'd make the dialog box by creating a
-Unity ``Canvas`` component and filling it with dialog items like
+Unity ``Canvas`` component and filling it with UI widgets like
 ``InputField`` or ``Text``.  To make the Canvas usable from BaroqueUI,
 you need to change its "Render Mode" to "World Space" and stick an extra
 ``Dialog`` component in the Canvas.
@@ -281,36 +281,64 @@ some action to request it; and "pre-positioned" dialogs which are part
 of the scene in the first place.  This is the meaning of the
 ``alreadyPositioned`` check box in the inspector for ``Dialog``.
 
+        public Dialog MakePopup(Controller controller, GameObject requester = null)
+
+This method of Dialog objects is used for pop-ups.  It duplicates the
+GameObject associated with the Dialog, and position it appropriately for
+the controller.  If 'requester' is not null, we use that as the
+"attached" object; otherwise, we use the original Dialog object
+directly.  The "attached" object is only used when asking for a pop-up
+twice: if you ask again for a pop-up with the same attached object, then
+the second time is interpreted as a request to close it, and the
+MakePopup method will return ``null`` in this case.
+
 Note that typically, Canvases are extremely large when compared with the
 rest of the scene.  You can ignore that for dialogs that are not
-``alreadyPositioned``: they will be scaled down automatically when they
-pop up.  For the dialogs that are ``alreadyPositioned``, you need to
-scale they them down while positioning them in the first place.
+``alreadyPositioned``: they will be scaled down automatically by
+MakePopup().  For the dialogs that are ``alreadyPositioned``, you need
+to scale them down while positioning them in the first place.
 
-(...)
+Dialog objects have these additional methods to read or write the value
+displayed by UI widgets:
 
+        public T Get<T>(string widget_name);
+        public void Set<T>(string widget_name, T value,
+                           UnityAction<T> onChange = null);
 
-Popup
-+++++
+Reads or writes the value in the widget with the give name (the name
+of the corresponding GameObject).  The type ``T`` must be of a type
+appropriate for the widget type.  Currently supported:
 
-(...)
+    * Text: reads or writes a string
+    * InputField: reads or writes a string
+    * Slider: reads or writes a float
+
+The optional ``onChange`` function is called when the value is changed
+by the user.  Note that the next call to ``Set<T>()`` removes the
+previously set ``onChange`` callback; it must be specified in all calls
+to ``Set<T>()`` to remain in effect.  If given as ``null``, it is simply
+removed.
+
+For pop-up dialogs, you need to call ``Set<T>()`` on the copy returned
+by ``MakePopup()``.
 
 
 Menu
 ++++
 
-(...)
+For menus.  Usage is:
+
+        var menu = new Menu {
+            { "Red", () => mat.color = Color.red},
+            { "Green", () => mat.color = Color.green},
+            { "Blue", () => mat.color = new Color(0.25f, 0.35f, 1)},
+            { "White", () => mat.color = Color.white},
+        };
+        menu.MakePopup(controller, gameObject);
 
 
+KeyboardClicker, KeyboardVRInput
+++++++++++++++++++++++++++++++++
 
-KeyboardClicker
-+++++++++++++++
-
-(...)
-
-
-KeyboardVRInput
-+++++++++++++++
-
-(...)
-
+For keyboards.  Mostly, it should show up automatically on InputFields
+from dialog boxes.
