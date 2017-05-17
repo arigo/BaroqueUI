@@ -308,6 +308,8 @@ appropriate for the widget type.  Currently supported:
 * Text: reads or writes a string
 * InputField: reads or writes a string
 * Slider: reads or writes a float
+* Toggle (checkboxes): reads or writes a bool
+* Dropdown: reads or writes an integer (the index of the selected item)
 
 The optional ``onChange`` function is called when the value is changed
 by the user.  Note that the next call to ``Set<T>()`` removes the
@@ -317,6 +319,17 @@ removed.
 
 For pop-up dialogs, you need to call ``Set<T>()`` on the copy returned
 by ``MakePopup()``.
+
+For buttons, you need this variant, with no value and an argument-less
+callback:
+
+        public void SetClick(string clickable_widget_name, UnityAction onClick);
+
+For dropdown lists that you need to populate from the script (as opposed to 
+having it pre-populated in the inspector), use this method:
+
+        public void SetChoices(string choice_widget_name, List<string> choices);
+
 
 
 Menu
