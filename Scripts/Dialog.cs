@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
-using UnityEditor;
+
 
 namespace BaroqueUI
 {
@@ -189,32 +189,41 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
-        static internal int UI_layer = -1;
+        internal const int UI_layer = 29;   /* and the next one */
 
         static void CreateLayer()
         {
-            if (UI_layer >= 0)
-                return;
+#if UNITY_EDITOR
+            /* when running in the editor, check that UI_layer and UI_layer + 1 are free,
+             * and then give them useful names.  This is based on
+             * https://forum.unity3d.com/threads/adding-layer-by-script.41970/reply?quote=2274824
+             * but with a constant value for UI_layer.  The problem is that this code cannot run
+             * outside the editor.  So I can find no reasonable way to dynamically pick an unused
+             * layer in builds that run outside the editor...
+             */
+            UnityEditor.SerializedObject tagManager = new UnityEditor.SerializedObject(
+                UnityEditor.AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            UnityEditor.SerializedProperty layers = tagManager.FindProperty("layers");
+            UnityEditor.SerializedProperty layer29 = layers.GetArrayElementAtIndex(UI_layer);
+            UnityEditor.SerializedProperty layer30 = layers.GetArrayElementAtIndex(UI_layer + 1);
 
-            /* picking two unused consecutive layer numbers...  This is based on
-               https://forum.unity3d.com/threads/adding-layer-by-script.41970/reply?quote=2274824 */
-            SerializedObject tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
-            SerializedProperty layers = tagManager.FindProperty("layers");
-            for (int i = 29; i >= 1; i--)
+            if (layer29.stringValue == "")
             {
-                SerializedProperty layerSP0 = layers.GetArrayElementAtIndex(i);
-                SerializedProperty layerSP1 = layers.GetArrayElementAtIndex(i + 1);
-                if (layerSP0.stringValue == "" && layerSP1.stringValue == "")
-                {
-                    layerSP0.stringValue = "BaroqueUI dialog";
-                    layerSP1.stringValue = "BaroqueUI dialog rendering";
-                    tagManager.ApplyModifiedProperties();
-                    UI_layer = i;
-                    BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
-                    return;
-                }
+                layer29.stringValue = "BaroqueUI dialog";
+                tagManager.ApplyModifiedProperties();
             }
-            throw new Exception("Couldn't find two consecutive unused layers");
+            if (layer30.stringValue == "")
+            {
+                layer30.stringValue = "BaroqueUI dialog rendering";
+                tagManager.ApplyModifiedProperties();
+            }
+
+            Debug.Assert(layer29.stringValue == "BaroqueUI dialog");
+            Debug.Assert(layer30.stringValue == "BaroqueUI dialog rendering");
+#endif
+
+            /* set up the main camera to hide these two layers */
+            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
         }
 
         public void DisplayDialog()
