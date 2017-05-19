@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.EventSystems;
 
 
@@ -45,6 +46,41 @@ namespace BaroqueUI
         {
             EnsureStarted();
             return controllers;
+        }
+
+        static public Controller[] GetControllersIfCreated()
+        {
+            if (controllers == null)
+                return new Controller[0];
+            return controllers;
+        }
+
+        static public GameObject FindPossiblyInactive(string name_in_scene)
+        {
+            Transform tr = null;
+            foreach (var name in name_in_scene.Split('/'))
+            {
+                if (name == "")
+                    continue;
+                if (tr == null)
+                {
+                    foreach (var gobj in SceneManager.GetActiveScene().GetRootGameObjects())
+                    {
+                        if (gobj.name == name)
+                        {
+                            tr = gobj.transform;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    tr = tr.FindChild(name);
+                }
+                if (tr == null)
+                    throw new System.Exception("gameobject not found: '" + name_in_scene + "'");
+            }
+            return tr.gameObject;
         }
 
 

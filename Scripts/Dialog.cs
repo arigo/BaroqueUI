@@ -50,6 +50,13 @@ namespace BaroqueUI
             return ShouldShowPopup(this, requester) ? Instantiate<Dialog>(this).DoShowPopup(controller) : null;
         }
 
+        public static Dialog MakePopup(string name_in_scene, Controller controller, GameObject requester = null)
+        {
+            GameObject gobj = BaroqueUI.FindPossiblyInactive(name_in_scene);
+            Dialog dlg = gobj.GetComponent<Dialog>();
+            return dlg.MakePopup(controller, requester);
+        }
+
 
         /*****************************************************************************************/
 
@@ -302,7 +309,8 @@ namespace BaroqueUI
             {
                 if (selectable.interactable)
                 {
-                    EventSystem.current.SetSelectedGameObject(selectable.gameObject, null);
+                    if (EventSystem.current != null)   /* XXX should we create it? */
+                        EventSystem.current.SetSelectedGameObject(selectable.gameObject, null);
                     selectable.Select();
                     return selectable.gameObject;
                 }

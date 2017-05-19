@@ -130,7 +130,7 @@ namespace BaroqueUI
 
         public static void ForceLeave(BaseControllerTracker tracker)
         {
-            foreach (var ctrl in BaroqueUI.GetControllers())
+            foreach (var ctrl in BaroqueUI.GetControllersIfCreated())
             {
                 if (tracker == ctrl.tracker_hover)
                 {
