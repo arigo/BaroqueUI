@@ -25,6 +25,9 @@ namespace BaroqueUI
          */
         public Vector3 position { get { return current_position; } }
         public Quaternion rotation { get { return current_rotation; } }
+        public Vector3 forward { get { return current_rotation * Vector3.forward; } }
+        public Vector3 right { get { return current_rotation * Vector3.right; } }
+        public Vector3 up { get { return current_rotation * Vector3.up; } }
         public Vector3 velocity { get { return DampingEstimateVelocity(); } }
         public Vector3 angularVelocity { get { return DampingEstimateAngularVelocity(); } }
 
@@ -123,6 +126,19 @@ namespace BaroqueUI
                 length += 1;
             }
             return locals[index];
+        }
+
+        public static void ForceLeave(BaseControllerTracker tracker)
+        {
+            foreach (var ctrl in BaroqueUI.GetControllers())
+            {
+                if (tracker == ctrl.tracker_hover)
+                {
+                    if (ctrl.is_grabbing)
+                        ctrl.UnGrab();
+                    ctrl.LeaveNow();
+                }
+            }
         }
 
 
@@ -378,15 +394,18 @@ namespace BaroqueUI
             return Array.FindAll(controllers, c => c.tracker_hover == c.tracker_hover_next);
         }
 
+        void LeaveNow()
+        {
+            BaseControllerTracker prev = tracker_hover;
+            tracker_hover = null;
+            prev.OnLeave(this);
+            SetPointer(null);
+        }
+
         void CallLeaveEvents()
         {
             if (tracker_hover != null && tracker_hover != tracker_hover_next)
-            {
-                BaseControllerTracker prev = tracker_hover;
-                tracker_hover = null;
-                prev.OnLeave(this);
-                SetPointer(null);
-            }
+                LeaveNow();
         }
 
         void CallEnterEvents()

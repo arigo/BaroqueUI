@@ -45,6 +45,11 @@ namespace BaroqueUI
             BaroqueUI.EnsureStarted();
         }
 
+        protected void OnDisable()
+        {
+            Controller.ForceLeave(this);
+        }
+
         public virtual bool CanStartTeleportAction(Controller controller) { return true; }
     }
 

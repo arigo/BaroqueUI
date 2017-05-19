@@ -7,18 +7,17 @@ using BaroqueUI;
 
 public class ColorMe : ControllerTracker
 {
-    GameObject shown;
-
     public override void OnTriggerDown(Controller controller)
     {
+        /* the Menu may also be created in advance and reused */
         Material mat = GetComponent<Renderer>().material;
-
         var menu = new Menu {
             { "Red", () => mat.color = Color.red},
             { "Green", () => mat.color = Color.green},
-            { "Blue", () => mat.color = Color.blue},
+            { "Blue", () => mat.color = new Color(0.25f, 0.35f, 1)},
             { "White", () => mat.color = Color.white},
         };
-        menu.ShowPopup(controller, ref shown);
+
+        menu.MakePopup(controller, gameObject);
     }
 }

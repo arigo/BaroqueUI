@@ -1,78 +1,354 @@
 BaroqueUI
 =========
 
-A Unity package giving a VR "application" user interface for the HTC Vive.
+A Unity package giving a "standard" user interface for HTC Vive
+applications.
 
-
-Basic idea
-----------
-
-When the two controllers move around and their buttons are pressed, we try to generate "events" in a way that is similar to desktop window managers, as well as JavaScript in web pages---and different from how games are typically approached.
-
-The hope is that it should give a better basis for VR applications that are not meant to be games.
+This can be used for games, but is also meant to give standardization
+more typical of non-game desktop applications.  Instead of giving a lot
+of options, it tries to promote one particular use of the controllers
+and the UI elements.  The hope is that it should give a better basis for
+VR applications that are not meant to be games.
 
 
 Status
 ------
 
-Very very preliminary.  For Unity 5.5 (other versions not tested but may work).
+Preliminary.  For Unity 5.5 (other versions not tested but may work).
+Developed for HTC Vive.
 
 
 Demo
 ----
 
-Download this repo, open ``BaroqueUI_Demo`` in Unity, and add SteamVR from the Asset Store.  For example scene(s) see ``Assets/Scenes``.
+This repo is meant to be checked out inside an ``Assets/`` directory of a Unity project.  This project should have SteamVR installed too, e.g. from the Assets Store.
 
-* Everything is done by putting a few "Action" objects on "Controller (left)" and "Controller (right)" gameobjects.  These two are inside the "[CameraRig]" object standard with SteamVR.
+For example scene(s) see the ``Examples/`` folder.
 
-* In the demo, we have a ``Teleport Action`` subobject on ``Controller (right)``.  This makes the standard teleporter beam when we press the touchpad on the right controller.  You can tweak the Transform of this subobject to change the direction of the beam (in the demo it is shooted 10 degrees upward, hence ``Rotation: X: -10``), as well as the exact point the beam starts from.  A good way to select that point is to run and pause the game, zoom in on the actual controller object, and select the corresponding ``Teleport Action`` object.  Then you see and can move/rotate the regular red-green-blue arrows (I recommend local coordinates in Unity for that: the 7th button on the top row in Unity 5.5 should say "Local" instead of "Global").  Once you are happy, copy the ``Transform`` component to the clipboard (right-click in the Inspector on the title bar ``Transform``); leave the game execution mode (un-click the Play button); and paste the values back to the same ``Transform`` component (same right-click, ``Paste Component Values``).
-
-* The ``Teleport Action`` object has got a ``TeleportAction`` component: in the Inspector you see notably ``Controller Button``, which says which of the buttons should do the action.
-
-* The demo has also a ``Scene Action`` object with a ``SceneAction`` component: it sends the events to the object in the scene that touch the ``SceneAction`` gameobject, in this case a small red blinking sphere (with a SphereCollider; if none are found we use simply ``Transform.position``).  The scene objects themselves install event handlers to receive the actions, e.g. in ``Start()``.
-
-* ``BaroqueUI_Grabbable`` is an example of a script put in the three small Spheres.  Often the scripts put in the scene don't come from BaroqueUI at all, but in this case ``BaroqueUI_Grabbable`` implements grabbing and moving around the object.  See documentation in this script.
-
-* ``BaroqueUI_Controller`` is the main controlling script, but it installs itself automatically on the "Controller (left)" and "Controller (right)" objects.
 
 
 Programming overview
 --------------------
 
-The goal is to handle events from the controllers.  Here, we simplified the buttons into five per HTC Vive controller: trigger pressed (the trigger is the button below the controller); touchpad pressed (clicks on the big round area); touchpad touched (when we only touch it; useful for tracking movements on the touchpad location); grib button (on the sides of the controller); and menu button (small button on top).
+All classes are in the BaroqueUI package (which you can access with
+``using BaroqueUI;``).  Some classes are components that install
+themselves automatically at runtime; there is no need to add them in the
+editor.
 
-Each event is sent to scripts that are on the "Controller (left)" and "Controller (right)" gameobjects inside the "[CameraRig]" object standard with SteamVR.  These scripts inherit from ``AbstractControllerAction`` (a subclass of ``MonoBehavior``) and can be placed either directly on the ``Controller`` or on some sub-GameObject if you need more control.  In addition to being placed inside either "Controller (left)" or "Controller (right)", each such script is configured with a ``Controller Button``, so that it handles exactly one of the 2x5 buttons.
+In a few steps:
 
-Two important examples of ``AbstractControllerAction`` subclasses:
+* You drag and drop the ``Teleport Enabler`` prefab in the scene (from
+  (``BaroqueUI/Prefabs``) if you want the default behavior of enabling
+  teleporting to move around.
 
-* ``TeleportAction``: draws a teleport beam when the button is down, and moves the player at the target when the button is released.
+* For each "interactable" object, you make sure it has got a collider
+  and then attach a script to it.
 
-* ``SceneAction``: looks for objects in the scene and forwards the actions to them if they touch.
+* In the typical case, the script should inherit from ``ControllerTracker``
+  instead of ``MonoBehaviour``.
 
-We assume the following model for each of the 2x5 buttons independently: each button can be "not over anything", "over something" (but the button is not pressed), or "grabbing something" (with the button pressed).
+* The BaroqueUI framework will call the ``OnXxx`` methods when the
+  controller interacts with the object.  See the
+  ``BaseControllerTracker`` and ``ControllerTracker`` for more details.
 
-For each non-pressed button, each frame, we look for something that we are over by calling the FindHover() method on all Actions corresponding to that button.  If there are multiple results, we keep the "highest priority" one.  We call OnButtonEnter and OnButtonLeave when the result changes.
+* The BaroqueUI framework also provides classes to display a keyboard
+  and interact with dialog-box-like displays.
 
-When we press the button, OnButtonDown is called.  At that point the button state goes to "grabbed": we don't call FindHover() any more, but instead we call OnButtonMove every frame, and finally OnButtonUp.
-
-These ``OnButtonXxx`` are virtual methods on the ``Hover`` instance returned by ``FindHover()``.
-
-``Hover`` is a base class that can be subclassed.  It may represent a gameobject that we are hovering over, but not necessarily.  For actions like ``TeleportAction`` there is just one Hover which is returned when we press the button only (no entering/leaving).  On the other extreme, you can create Hovers that specify a position more precisely than with just a gameobject, e.g. as a particular vertex of a rendered mesh.
-
-The logic behind OnButtonEnter and OnButtonLeave is based on the identity of the Hover object: as long as the same Hover object is returned by FindHover(), we are in the same area.  The two approaches here are to either prebuild the Hover object(s) and return one of them (or none) from FindHover(), or to use a more dynamic caching technique.
-
-Hover instances are sorted by comparing them.  The default comparison on the Hover base class uses the value of the field "priority".
-
-Each ``SceneAction`` has got a ``sceneActionName``, usually set in the Inspector.  To register scene objects with a particular ``SceneAction`` their script needs to call the static method ``SceneAction.RegisterXxx("scene_action_name", gameObject, xxx)``.  The ``gameObject`` identifies the object whose colliders we consider.  Variants, from most basic to most flexible:
-
-* ``SceneAction.RegisterClick(..., OnClick)``: will only call the OnClick method when clicked.
-
-* ``SceneAction.RegisterClick(..., OnClick, reverse_priority)``: same, but with an explicit reverse_priority (a float, by default zero; higher values mean that the Hover will be considered afterwards; negative values are also allowed).
-
-* ``SceneAction.Register(..., hover_instance)``: gives a single fixed Hover.  Will invoke the methods OnButtonXxx() on it.  (If needed, the priority can be set by changing the field ``reverse_priority`` in the Hover instance.)
-
-* ``SceneAction.Register(..., OnFindHover)``: will call ``OnFindHover()`` to figure out which hover to use.
+(...write more here...)
 
 
-Here is an example of using multiple SceneAction objects for the same button.  Say we want to be able to grab an object A with a button, but also if we are close (but not touching) and press the same button, a menu for object A opens.  To implement this, first put a SceneAction with name "My Grabber", and give the object a BaroqueUI_GrabbableObject script with the same name "Grab".  Then put a second SceneAction with name "My Menu".  Put this second SceneAction on a subobject of the Controller and give this subobject a large-ish SphereCollider.  The large SphereCollider makes the action detect objects that are farther away.  Finally, on a custom script of object A, we call 
-``SceneAction.RegisterClick("My Menu", gameObject, OnClick, 10)``.  The large value of ``reverse_priority``, arbitrarily set to 10 here, gives that registration lower priority; the other Hover objects, like the ones built for the "Grab" SceneAction, will take priority.
+
+BaroqueUI
+---------
+
+This class contains only static methods.  The most important ones are:
+
+* ``BaroqueUI.BaroqueUI.GetHeadTransform()`` returns the Transform of
+  the headset.
+
+* ``BaroqueUI.BaroqueUI.GetControllers()`` returns an array of
+  ``Controller`` objects.  See below.
+
+
+Controller
+----------
+
+``Controller`` is a component that installs itself on the ``Controller
+(left)`` and ``Controller (right)`` objects in ``SteamVR``.  Public
+interface:
+
+        public Vector3 position;
+        public Quaternion rotation;
+        public Vector3 forward;
+        public Vector3 right;
+        public Vector3 up;
+        public Vector3 velocity;
+        public Vector3 angularVelocity;
+
+Returns the location of the controller.  This is the position and
+velocity of a point that is slightly in front of the controller, which
+plays the role of "the position of the mouse pointer" in BaroqueUI.
+
+        public bool triggerPressed;    // below the controller
+        public bool touchpadPressed;   // big round area
+        public bool gripPressed;       // side buttons
+        public bool menuPressed;       // top small button
+        public bool GetButton(EControllerButton btn);
+
+Check whether individual buttons are pressed or not.
+
+        public bool touchpadTouched;
+        public Vector2 touchpadPosition;
+
+Check whether the finger is touching the touchpad and where.
+The position contains X and Y coordinates between -1 and 1.
+
+        public BaseControllerTracker HoverControllerTracker();
+        public BaseControllerTracker GrabbedControllerTracker()
+
+Return which ``BaseControllerTracker`` (see below) the controller
+is currently over, or is currently locked inside.
+
+        public void GrabFromScript(bool active);
+
+Lock or unlock the current hover area manually.  It is also locked
+automatically by pressing the trigger or the grip button.
+
+        public void HapticPulse(int durationMicroSec = 500);
+
+Send a haptic pulse to the controller.
+
+        public GameObject SetPointer(string pointer_name);
+        public GameObject SetPointerPrefab(GameObject prefab);
+
+Set the "mouse pointer".  This is a small object that is visible in
+front of the controller, centered at the point that is at
+``Controller.position``.  If given by name, it must be a GameObject from
+a ``Resources`` directory, in a subdirectory ``Pointers``.  When either
+function is called with ``null``, the pointer is removed.
+
+        public void SetScrollWheel(bool visible);
+
+Show or hide the scroll wheel on the trackpad.
+
+        public void SetControllerHints(string trigger = null, string grip = null,
+            string touchpadTouched = null, string touchpadPressed = null, string menu = null);
+
+Set or unset controller hints.  The hints are attached to particular
+buttons and should be small strings describing what the button does.
+The hints are only shown if the controller is not moving much, like
+typical for 2D mouse pointer hints.
+
+        public int index;
+
+The index of this controller: 0 for left, or 1 for right.  This is the
+index inside the ``BaroqueUI.BaroqueUI.GetControllers()`` array.
+
+        public T GetAdditionalData<T>(ref T[] locals) where T: new();
+
+Attach additional local, controller-specific data.  To use this, you
+pass by reference an array of some type ``T``, which should be a small
+local class.  The array does not need to be initialized; this method
+does it for you.  It returns the ``index``th item of the array,
+instantiating it if it is still null.
+
+
+BaseControllerTracker
+---------------------
+
+For every object in the scene that you want to interact with, you need
+to make a script and change its parent from ``MonoBehaviour`` to one of
+``ControllerTracker`` or ``ConcurrentControllerTracker``.  You also need
+to make sure the GameObject or its children contain at least one
+collider, typically of the "trigger" kind.  This is used to know the
+maximal interaction area.
+
+Then you can override the following methods (the default implementation
+does nothing):
+
+        public virtual void OnEnter(Controller controller);
+        public virtual void OnLeave(Controller controller);
+
+Called when the controller enters or leaves the interaction area.
+``OnEnter`` is always called before any other ``OnXxx``, and ``OnLeave``
+is always called last.  Moreover, a given controller cannot be in two
+different GameObject's areas at once: we always call ``OnLeave`` on the
+first area before calling ``OnEnter`` on the second one.
+
+        public virtual void OnTriggerDown(Controller controller);
+        public virtual void OnTriggerUp(Controller controller);
+        public virtual void OnGripDown(Controller controller);
+        public virtual void OnGripUp(Controller controller);
+
+Called when the trigger or the grip button are pressed or released
+inside the area.  While one of them is pressed, the interaction area is
+locked, i.e. we won't receive any ``OnLeave``.  Note that if the user
+presses both buttons at once, only the first one causes these methods
+from being called.
+
+        public virtual float GetPriority(Controller controller);
+
+Get the "priority" of this interaction area.  Higher priority areas
+correspond to higher numbers.  If you return ``float.NegativeInfinity``
+then the controller is considered not to be in the area at all, even
+though it touches the colliders; this is useful to have finer-grained
+detection.  If several GameObjects return a different value, the one
+with the highest priority wins.  Right now, the default is minus the
+size of the bounding box of the largest collider.  This default does not
+depend on the position of the controller; in some cases you want it to
+return a higher number if the controller is closer to some specific
+"center" point, to help distinguish between two close GameObjects.
+
+        public virtual bool CanStartTeleportAction(Controller controller);
+
+If you override this method and return false, then the Teleport Enabler
+action will not start even if the user pressed the touchpad.  Useful if
+this area has another usage for the touchpad.
+
+
+ControllerTracker
+-----------------
+
+The most common class to inherit from.  This version simplifies what
+occurs if both controllers are in the interaction area at the same time.
+The answer is that if you inherit from ``ControllerTracker``, you don't
+have to worry about it.  The ``OnEnter`` and ``OnLeave`` and all the
+``OnXxx`` methods in-between are always called with the same controller.
+If the second controller does an action that requires more attention,
+like getting a higher priority by ``GetPriority`` or actually pressing
+the trigger or grip button, then we first make sure the first controller
+first "leaves".  This will not occur if the first controller locked the
+area for itself.
+
+``ControllerTracker`` exposes these methods that you can override:
+
+        public virtual void OnMoveOver(Controller controller);
+        public virtual void OnTriggerDrag(Controller controller);
+        public virtual void OnGripDrag(Controller controller);
+
+Called whenever the controller "moves" (i.e. all the time) inside the
+area.  The function that gets called depends on the locking state.  For
+example, if you are only interested in "click-and-drag" operations,
+override ``OnTriggerDrag`` but not ``OnMoveOver``.  Some sensible ordering
+guarantees exist, like that ``OnTriggerDrag`` is always called between
+``OnTriggerDown`` and ``OnTriggerUp``.
+
+
+ConcurrentControllerTracker
+---------------------------
+
+When using ``ConcurrentControllerTracker`` as the base class instead of
+``ControllerTracker``, you get more flexibility but need to be more
+careful.  In this subclass, the ``OnXxx`` methods are called with both
+controllers independently.  There is only one generic movement method:
+
+        public virtual void OnMove(Controller[] controllers);
+
+Called with an array of controllers that are inside the area.  If both
+controllers are inside, this is called only once with an array of length
+two.  Note a potentially useful detail: if one controller leaves the
+area, ``OnMove`` is still called once, but with the controller no longer
+listed; this occurs in addition to the following ``OnLeave``.
+
+See also ``Controller.GetAdditionalData()``.
+
+
+GrabbableObject
+---------------
+
+This is meant as an example inheriting from ``ControllerTracker`` that
+you can just drop into any GameObject with a collider.  The object can
+then be moved around by pressing the trigger button.  See its source
+code as an example of using the ``OnXxx`` methods.
+
+
+
+Dialog
+------
+
+For dialog boxes.  Typically, you'd make the dialog box by creating a
+Unity ``Canvas`` component and filling it with UI widgets like
+``InputField`` or ``Text``.  To make the Canvas usable from BaroqueUI,
+you need to change its "Render Mode" to "World Space" and stick an extra
+``Dialog`` component in the Canvas.
+
+There are two kinds of dialogs: "pop-ups" show up when the user does
+some action to request it; and "pre-positioned" dialogs which are part
+of the scene in the first place.  This is the meaning of the
+``alreadyPositioned`` check box in the inspector for ``Dialog``.
+
+        public Dialog MakePopup(Controller controller, GameObject requester = null)
+
+This method of Dialog objects is used for pop-ups.  It duplicates the
+GameObject associated with the Dialog, and position it appropriately for
+the controller.  If 'requester' is not null, we use that as the
+"attached" object; otherwise, we use the original Dialog object
+directly.  The "attached" object is only used when asking for a pop-up
+twice: if you ask again for a pop-up with the same attached object, then
+the second time is interpreted as a request to close it, and the
+MakePopup method will return ``null`` in this case.
+
+Note that typically, Canvases are extremely large when compared with the
+rest of the scene.  You can ignore that for dialogs that are not
+``alreadyPositioned``: they will be scaled down automatically by
+MakePopup().  For the dialogs that are ``alreadyPositioned``, you need
+to scale them down while positioning them in the first place.
+
+Dialog objects have these additional methods to read or write the value
+displayed by UI widgets:
+
+        public T Get<T>(string widget_name);
+        public void Set<T>(string widget_name, T value,
+                           UnityAction<T> onChange = null);
+
+Reads or writes the value in the widget with the give name (the name
+of the corresponding GameObject).  The type ``T`` must be of a type
+appropriate for the widget type.  Currently supported:
+
+* Text: reads or writes a string
+* InputField: reads or writes a string
+* Slider: reads or writes a float
+* Toggle (checkboxes): reads or writes a bool
+* Dropdown: reads or writes an integer (the index of the selected item)
+
+The optional ``onChange`` function is called when the value is changed
+by the user.  Note that the next call to ``Set<T>()`` removes the
+previously set ``onChange`` callback; it must be specified in all calls
+to ``Set<T>()`` to remain in effect.  If given as ``null``, it is simply
+removed.
+
+For pop-up dialogs, you need to call ``Set<T>()`` on the copy returned
+by ``MakePopup()``.
+
+For buttons, you need this variant, with no value and an argument-less
+callback:
+
+        public void SetClick(string clickable_widget_name, UnityAction onClick);
+
+For dropdown lists that you need to populate from the script (as opposed to 
+having it pre-populated in the inspector), use this method:
+
+        public void SetChoices(string choice_widget_name, List<string> choices);
+
+
+
+Menu
+----
+
+For menus.  Usage is:
+
+        var menu = new Menu {
+            { "Red", () => mat.color = Color.red},
+            { "Green", () => mat.color = Color.green},
+            { "Blue", () => mat.color = new Color(0.25f, 0.35f, 1)},
+            { "White", () => mat.color = Color.white},
+        };
+        menu.MakePopup(controller, gameObject);
+
+
+KeyboardClicker, KeyboardVRInput
+--------------------------------
+
+For keyboards.  Mostly, it should show up automatically on InputFields
+from dialog boxes.  To add a keyboard manually into the scene, look into
+the Prefabs.
