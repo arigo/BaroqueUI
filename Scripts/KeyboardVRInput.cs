@@ -81,8 +81,11 @@ internal class KeyboardVRInput : MonoBehaviour, ISelectHandler
 
     void State()
     {
+#if false
+        /* debugging only */
         InputField inputField = GetInputField();
         Debug.Log("caretPosition: " + inputField.caretPosition + "    sel: " + inputField.selectionAnchorPosition + " - " + inputField.selectionFocusPosition);
+#endif
     }
 
     void ConfirmKey(InputField inputField)
