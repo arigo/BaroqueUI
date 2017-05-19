@@ -189,23 +189,13 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
-        static int UI_layer = -1;
-
-        RenderTexture render_texture;
-        Camera ortho_camera;
-        Transform quad, back_quad;
-        float pixels_per_unit;
-
-        public void DisplayDialog()
-        {
-            transform.localScale = Vector3.one / unitsPerMeter;
-            alreadyPositioned = true;
-            gameObject.SetActive(true);
-            StartCoroutine(CoSetInitialSelection());
-        }
+        static internal int UI_layer = -1;
 
         static void CreateLayer()
         {
+            if (UI_layer >= 0)
+                return;
+
             /* picking two unused consecutive layer numbers...  This is based on
                https://forum.unity3d.com/threads/adding-layer-by-script.41970/reply?quote=2274824 */
             SerializedObject tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
@@ -220,67 +210,19 @@ namespace BaroqueUI
                     layerSP1.stringValue = "BaroqueUI dialog rendering";
                     tagManager.ApplyModifiedProperties();
                     UI_layer = i;
-                    break;
+                    BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
+                    return;
                 }
             }
-            if (UI_layer < 0)
-                throw new Exception("Couldn't find two consecutive unused layers");
+            throw new Exception("Couldn't find two consecutive unused layers");
         }
 
-        void PrepareForRendering()
+        public void DisplayDialog()
         {
-            if (UI_layer < 0)
-                CreateLayer();
-
-            RectTransform rtr = transform as RectTransform;
-            pixels_per_unit = GetComponent<CanvasScaler>().dynamicPixelsPerUnit;
-            render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
-                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 0);
-            Transform tr1 = transform.Find("Ortho Camera");
-            if (tr1 != null)
-                ortho_camera = tr1.GetComponent<Camera>();
-            else
-                ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
-            ortho_camera.enabled = false;
-            ortho_camera.transform.SetParent(transform);
-            ortho_camera.transform.position = rtr.TransformPoint(
-                rtr.rect.width* (0.5f - rtr.pivot.x),
-                rtr.rect.height* (0.5f - rtr.pivot.y),
-                0);
-            ortho_camera.transform.rotation = rtr.rotation;
-            ortho_camera.clearFlags = CameraClearFlags.SolidColor;
-            ortho_camera.backgroundColor = new Color(1, 1, 1);
-            ortho_camera.cullingMask = 2 << UI_layer;
-            ortho_camera.orthographic = true;
-            ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height* 0.5f, 0).magnitude;
-            ortho_camera.nearClipPlane = -10;
-            ortho_camera.farClipPlane = 10;
-            ortho_camera.targetTexture = render_texture;
-
-            RecSetLayer(UI_layer);
-            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
-
-            quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-            quad.SetParent(transform);
-            quad.position = ortho_camera.transform.position;
-            quad.rotation = ortho_camera.transform.rotation;
-            quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-            DestroyImmediate(quad.GetComponent<Collider>());
-
-            quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
-            quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
-
-            back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-            back_quad.SetParent(transform);
-            back_quad.position = ortho_camera.transform.position;
-            back_quad.rotation = ortho_camera.transform.rotation* Quaternion.LookRotation(new Vector3(0, 0, -1));
-            back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-            DestroyImmediate(back_quad.GetComponent<Collider>());
-
-            foreach (var canvas in GetComponentsInChildren<Canvas>(includeInactive: true))
-                canvas.worldCamera = ortho_camera;
-
-            StartCoroutine(UpdateRendering());
+            transform.localScale = Vector3.one / unitsPerMeter;
+            alreadyPositioned = true;
+            gameObject.SetActive(true);
+            StartCoroutine(CoSetInitialSelection());
         }
 
         void OnDestroy()
@@ -288,43 +230,40 @@ namespace BaroqueUI
             StopAutomaticKeyboard();
         }
 
-        void RecSetLayer(int layer)
+        void RecSetLayer(int layer, bool includeInactive = false)
         {
-            foreach (var canvas in GetComponentsInChildren<Canvas>(includeInactive: true))
-                canvas.gameObject.layer = layer;
-            foreach (var rend in GetComponentsInChildren<CanvasRenderer>(includeInactive: true))
-                rend.gameObject.layer = layer;
+            foreach (var child in GetComponentsInChildren<Canvas>(includeInactive))
+                child.gameObject.layer = layer;
+            foreach (var child in GetComponentsInChildren<CanvasRenderer>(includeInactive))
+                child.gameObject.layer = layer;
         }
 
         IEnumerator UpdateRendering()
         {
             while (this && isActiveAndEnabled)
             {
-#if false
-                var disabled = new List<Canvas>();
-
-                foreach (var kv in active_dialogs)
-                {
-                    Canvas canvas = kv.Key;
-                    Dialog dlg = kv.Value;
-                    if (/*dlg != this && dlg && dlg.isActiveAndEnabled && canvas.enabled*/ true)
-                    {
-                        canvas.enabled = false;
-                        disabled.Add(canvas);
-                    }
-                }
-
-                ortho_camera.Render();
-
-                foreach (var canvas in disabled)
-                    canvas.enabled = true;
-#endif
-                RecSetLayer(UI_layer + 1);   /* this layer is visible */
-                ortho_camera.Render();
-                RecSetLayer(UI_layer);   /* this layer is not visible any more */
-
+                UpdateRenderingOnce();
                 yield return new WaitForSecondsRealtime(0.05f);
             }
+        }
+
+        void UpdateRenderingOnce(bool includeInactive = false)
+        {
+            RecSetLayer(UI_layer + 1);   /* this layer is visible for the camera */
+
+            foreach (var canvas in GetComponentsInChildren<Canvas>())
+            {
+                var rend = canvas.GetComponent<DialogRenderer>();
+                if (rend == null)
+                {
+                    rend = canvas.gameObject.AddComponent<DialogRenderer>();
+                    float pixels_per_unit = GetComponent<CanvasScaler>().dynamicPixelsPerUnit;
+                    rend.PrepareForRendering(pixels_per_unit);
+                }
+                rend.Render();
+            }
+
+            RecSetLayer(UI_layer, includeInactive);   /* this layer is not visible any more */
         }
 
         void Start()
@@ -335,24 +274,14 @@ namespace BaroqueUI
                 return;
             }
 
-            PrepareForRendering();
+            CreateLayer();
+            UpdateRenderingOnce(includeInactive: true);
+            StartCoroutine(UpdateRendering());
 
             foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
                 if (inputField.GetComponent<KeyboardVRInput>() == null)
                     inputField.gameObject.AddComponent<KeyboardVRInput>();
-            }
-
-            if (GetComponentInChildren<Collider>() == null)
-            {
-                RectTransform rtr = transform as RectTransform;
-                Rect r = rtr.rect;
-                float zscale = transform.InverseTransformVector(transform.forward * 0.108f).magnitude;
-
-                BoxCollider coll = gameObject.AddComponent<BoxCollider>();
-                coll.isTrigger = true;
-                coll.size = new Vector3(r.width, r.height, zscale);
-                coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
             }
 
             StartAutomaticKeyboard();
@@ -391,9 +320,8 @@ namespace BaroqueUI
             return rr1.index < rr2.index;
         }
 
-        static bool BestRaycastResult(List<RaycastResult> lst, out RaycastResult best_result)
+        static bool BestRaycastResult(List<RaycastResult> lst, ref RaycastResult best_result)
         {
-            best_result = new RaycastResult();
             bool found_any = false;
 
             foreach (var result in lst)
@@ -437,48 +365,24 @@ namespace BaroqueUI
 
         bool UpdateCurrentPoint(Controller controller, bool allow_out_of_bounds = false)
         {
-            RectTransform rtr = transform as RectTransform;
-            Vector2 local_pos = transform.InverseTransformPoint(controller.position);   /* drop the 'z' coordinate */
-            local_pos.x += rtr.rect.width * rtr.pivot.x;
-            local_pos.y += rtr.rect.height * rtr.pivot.y;
-            /* Here, 'local_pos' is in coordinates that match the UI element coordinates.
-             * To convert it to the 'screenspace' coordinates of ortho_camera, we need to apply
-             * a scaling factor of 'pixels_per_unit'. */
-            pevent.position = local_pos * pixels_per_unit;
+            Vector2 screen_point = GetComponent<DialogRenderer>().ScreenPoint(controller.position);
+            pevent.position = screen_point;
 
-            List<RaycastResult> results = new List<RaycastResult>();
-            foreach (var raycaster in GetComponentsInChildren<GraphicRaycaster>())
-                raycaster.Raycast(pevent, results);
+            var results = new List<RaycastResult>();
+            foreach (var rend in GetComponentsInChildren<DialogRenderer>())
+                rend.CustomRaycast(controller.position, results);
 
-            RaycastResult rr;
-            if (!BestRaycastResult(results, out rr))
+            RaycastResult rr = new RaycastResult { depth = -1, screenPosition = screen_point };
+            if (!BestRaycastResult(results, ref rr))
             {
-                if (allow_out_of_bounds)
-                {
-                    /* return a "raycast" result that simply projects on the canvas plane Z=0 */
-                    /* (xxx could use Vector3.ProjectOnPlane(); this version is more flexible in case
-                       we want again a ray that is not perpendicular) */
-                    Plane plane = new Plane(transform.forward, transform.position);
-                    Ray ray = new Ray(controller.position, transform.forward);
-                    float enter;
-                    if (plane.Raycast(ray, out enter))
-                    {
-                        pevent.pointerCurrentRaycast = new RaycastResult
-                        {
-                            depth = -1,
-                            distance = enter,
-                            worldNormal = transform.forward,
-                            worldPosition = ray.GetPoint(enter),
-                        };
-                        return true;
-                    }
-                }
-                return false;
+                if (!allow_out_of_bounds)
+                    return false;
             }
+            rr.worldNormal = transform.forward;
+            rr.worldPosition = Vector3.ProjectOnPlane(controller.position - transform.position, transform.forward) + transform.position;
             pevent.pointerCurrentRaycast = rr;
             return rr.gameObject != null;
         }
-
 
         void UpdateHoveringTarget(GameObject new_target)
         {
@@ -643,6 +547,128 @@ namespace BaroqueUI
             var keyboardVrInput = gobj.GetComponent<KeyboardVRInput>();
             if (keyboardVrInput != null)
                 keyboardVrInput.KeyboardTyping(state, key);
+        }
+    }
+
+
+    class DialogRenderer : MonoBehaviour
+    {
+        RenderTexture render_texture;
+        Camera ortho_camera;
+        Transform quad, back_quad;
+        float pixels_per_unit;
+
+        public void PrepareForRendering(float pixels_per_unit)
+        {
+            RectTransform rtr = transform as RectTransform;
+            if (GetComponentInChildren<Collider>() == null)
+            {
+                Rect r = rtr.rect;
+                float zscale = transform.InverseTransformVector(transform.forward * 0.108f).magnitude;
+
+                BoxCollider coll = gameObject.AddComponent<BoxCollider>();
+                coll.isTrigger = true;
+                coll.size = new Vector3(r.width, r.height, zscale);
+                coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
+            }
+
+            this.pixels_per_unit = pixels_per_unit;
+            render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
+                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 0);
+            Transform tr1 = transform.Find("Ortho Camera");
+            if (tr1 != null)
+                ortho_camera = tr1.GetComponent<Camera>();
+            else
+                ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
+            ortho_camera.enabled = false;
+            ortho_camera.transform.SetParent(transform);
+            ortho_camera.transform.position = rtr.TransformPoint(
+                rtr.rect.width * (0.5f - rtr.pivot.x),
+                rtr.rect.height * (0.5f - rtr.pivot.y),
+                0);
+            ortho_camera.transform.rotation = rtr.rotation;
+            ortho_camera.clearFlags = CameraClearFlags.SolidColor;
+            ortho_camera.backgroundColor = new Color(1, 1, 1);
+            ortho_camera.cullingMask = 2 << Dialog.UI_layer;
+            ortho_camera.orthographic = true;
+            ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height * 0.5f, 0).magnitude;
+            ortho_camera.nearClipPlane = -10;
+            ortho_camera.farClipPlane = 10;
+            ortho_camera.targetTexture = render_texture;
+
+            quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+            quad.SetParent(transform);
+            quad.position = ortho_camera.transform.position;
+            quad.rotation = ortho_camera.transform.rotation;
+            quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+            quad.gameObject.layer = 0;   /* default */
+            DestroyImmediate(quad.GetComponent<Collider>());
+
+            quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
+            quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
+
+            back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+            back_quad.SetParent(transform);
+            back_quad.position = ortho_camera.transform.position;
+            back_quad.rotation = ortho_camera.transform.rotation * Quaternion.LookRotation(new Vector3(0, 0, -1));
+            back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+            back_quad.gameObject.layer = 0;   /* default */
+            DestroyImmediate(back_quad.GetComponent<Collider>());
+
+            GetComponent<Canvas>().worldCamera = ortho_camera;
+        }
+
+        private void OnDestroy()
+        {
+            render_texture.Release();
+        }
+
+        public void Render()
+        {
+            ortho_camera.Render();
+        }
+
+        public void CustomRaycast(Vector3 world_position, List<RaycastResult> results)
+        {
+            Vector2 screen_point = ScreenPoint(world_position);
+            var canvas = GetComponent<Canvas>();
+            var graphicsForCanvas = GraphicRegistry.GetGraphicsForCanvas(canvas);
+            for (int i = 0; i < graphicsForCanvas.Count; i++)
+            {
+                Graphic graphic = graphicsForCanvas[i];
+                if (graphic.canvasRenderer.cull)
+                    continue;
+                if (graphic.depth == -1)
+                    continue;
+                if (!graphic.raycastTarget)
+                    continue;
+                if (!RectTransformUtility.RectangleContainsScreenPoint(graphic.rectTransform, screen_point, ortho_camera))
+                    continue;
+                if (!graphic.Raycast(screen_point, ortho_camera))
+                    continue;
+
+                results.Add(new RaycastResult {
+                    gameObject = graphic.gameObject,
+                    module = GetComponent<GraphicRaycaster>(),
+                    index = results.Count,
+                    depth = graphic.depth,
+                    sortingLayer = canvas.sortingLayerID,
+                    sortingOrder = canvas.sortingOrder,
+                    screenPosition = screen_point,
+                });
+            }
+        }
+
+        public Vector2 ScreenPoint(Vector3 world_position)
+        {
+            RectTransform rtr = transform as RectTransform;
+            Vector2 local_pos = transform.InverseTransformPoint(world_position);   /* drop the 'z' coordinate */
+            local_pos.x += rtr.rect.width * rtr.pivot.x;
+            local_pos.y += rtr.rect.height * rtr.pivot.y;
+             /* Here, 'local_pos' is in coordinates that match the UI element coordinates.
+              * To convert it to the 'screenspace' coordinates of a camera, we need to apply
+              * a scaling factor of 'pixels_per_unit'. */
+            return local_pos * pixels_per_unit;
         }
     }
 }

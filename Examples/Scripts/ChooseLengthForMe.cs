@@ -15,7 +15,7 @@ public class ChooseLengthForMe : ControllerTracker
             return;
 
         popup.SetChoices("DynDropdown", new List<string> {
-            "1", "2", "3", "4", "5"
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"
         });
         popup.Set("DynDropdown", (int)(transform.localScale.y * 25f + 0.5f) - 1, value =>
         {
