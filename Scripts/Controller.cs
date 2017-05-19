@@ -165,6 +165,8 @@ namespace BaroqueUI
         SteamVR_TrackedObject trackedObject;
         bool scrollWheelVisible;
 
+        Collider[] overlapping_colliders;
+
         internal void Initialize(int index)
         {
             controller_index = index;
@@ -177,12 +179,18 @@ namespace BaroqueUI
             ResetVelocityEstimates();
         }
 
+        Vector3 ComputePosition()
+        {
+            return transform.position + transform.rotation * POS_TO_CURSOR;
+        }
+
         void ReadControllerState()
         {
-            /* updates the state fields; updates 'is_tracking' and 'is_clicking_now';
-             * may cause un-grabbing and so 'is_grabbing' may be reset to false;
-             * sets 'tracker_hover_next'. */
-
+            /* Updates the state fields; updates 'is_tracking' and 'is_clicking_now'.
+             * Invokes OverlapSphere(), but should not call user code.  This ensures
+             * that OverlapSphere() will not see objects created just now, where
+             * Start() has not been called yet.
+             */
             is_clicking_now = false;
 
             var system = OpenVR.System;
@@ -190,16 +198,8 @@ namespace BaroqueUI
                 !system.GetControllerState((uint)trackedObject.index, ref controllerState,
                                            (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t))))
             {
-                tracker_hover_next = null;
                 bitmask_buttons = 0;
-
-                if (is_tracking)
-                {
-                    if (is_grabbing)
-                        UnGrab();
-                    is_tracking = false;
-                    ResetVelocityEstimates();
-                }
+                is_tracking = false;
             }
             else
             {
@@ -229,11 +229,30 @@ namespace BaroqueUI
                 }
                 bitmask_buttons = b;
 
+                overlapping_colliders = Physics.OverlapSphere(ComputePosition(), 0.02f, Physics.AllLayers,
+                                                              QueryTriggerInteraction.Collide);
+            }
+        }
+
+        void FindTrackerHoverNext()
+        {
+            /* may cause un-grabbing and so 'is_grabbing' may be reset to false;
+             * sets 'tracker_hover_next'. */
+
+            if (!is_tracking)
+            {
+                if (is_grabbing)
+                    UnGrab();
+                tracker_hover_next = null;
+                ResetVelocityEstimates();
+            }
+            else
+            {
                 if (is_grabbing && grabbing_button.HasValue && !GetButton(grabbing_button.Value))
                     UnGrab();
 
                 /* read the position/rotation and update the velocity estimation */
-                current_position = transform.position + transform.rotation * POS_TO_CURSOR;
+                current_position = ComputePosition();
                 current_rotation = transform.rotation;
                 UpdateVelocityEstimates();
 
@@ -242,16 +261,15 @@ namespace BaroqueUI
                  */
                 if (is_grabbing)
                 {
+                    overlapping_colliders = null;
                     tracker_hover_next = tracker_hover;
                     tracker_hover_next_priority = float.PositiveInfinity;
                 }
                 else
                 {
-                    Collider[] lst = Physics.OverlapSphere(current_position, 0.02f, Physics.AllLayers,
-                                                           QueryTriggerInteraction.Collide);
                     var potential = new HashSet<Transform>();
 
-                    foreach (var coll in lst)
+                    foreach (var coll in overlapping_colliders)
                     {
                         Transform tr = coll.transform;
                         while (tr != null)
@@ -261,6 +279,7 @@ namespace BaroqueUI
                             tr = tr.parent;
                         }
                     }
+                    overlapping_colliders = null;
 
                     float best_priority = float.NegativeInfinity;
                     BaseControllerTracker best = null;
@@ -439,7 +458,10 @@ namespace BaroqueUI
         static internal void UpdateAllControllers(Controller[] controllers)
         {
             foreach (var ctrl in controllers)
-                ctrl.ReadControllerState();    /* read state, calls OnTriggerUp() */
+                ctrl.ReadControllerState();    /* read state, calls OverlapSphere() */
+
+            foreach (var ctrl in controllers)
+                ctrl.FindTrackerHoverNext();    /* call OnTriggerUp(), update hovers */
 
             ResolveControllerConflicts(controllers);
 

@@ -61,7 +61,7 @@ namespace BaroqueUI
                 Vector2 full_item_size = rtr.sizeDelta;
                 float size_y = (full_item_size.y - OVERLAP) * menu_items.Count + OVERLAP;
                 rtr.sizeDelta = new Vector2(full_item_size.x, size_y);
-                rtr.pivot = new Vector2(0.5f, -70f / size_y);
+                rtr.pivot = new Vector2(0.5f, -35f / size_y);
                 RectTransform button0 = rtr.GetChild(0) as RectTransform;
                 float y = 0;
 
