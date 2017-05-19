@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
-
+using UnityEditor;
 
 namespace BaroqueUI
 {
@@ -204,20 +204,33 @@ namespace BaroqueUI
             StartCoroutine(CoSetInitialSelection());
         }
 
+        static void CreateLayer()
+        {
+            /* picking two unused consecutive layer numbers...  This is based on
+               https://forum.unity3d.com/threads/adding-layer-by-script.41970/reply?quote=2274824 */
+            SerializedObject tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            SerializedProperty layers = tagManager.FindProperty("layers");
+            for (int i = 29; i >= 1; i--)
+            {
+                SerializedProperty layerSP0 = layers.GetArrayElementAtIndex(i);
+                SerializedProperty layerSP1 = layers.GetArrayElementAtIndex(i + 1);
+                if (layerSP0.stringValue == "" && layerSP1.stringValue == "")
+                {
+                    layerSP0.stringValue = "BaroqueUI dialog";
+                    layerSP1.stringValue = "BaroqueUI dialog rendering";
+                    tagManager.ApplyModifiedProperties();
+                    UI_layer = i;
+                    break;
+                }
+            }
+            if (UI_layer < 0)
+                throw new Exception("Couldn't find two consecutive unused layers");
+        }
+
         void PrepareForRendering()
         {
-            /* XXX picking two hopefully-unused layer numbers... */
             if (UI_layer < 0)
-            {
-                for (int i = 29; i >= 1; i--)
-                    if ((LayerMask.LayerToName(i) == null || LayerMask.LayerToName(i) == "") &&
-                        (LayerMask.LayerToName(i + 1) == null || LayerMask.LayerToName(i + 1) == ""))
-                    {
-                        UI_layer = i;
-                        break;
-                    }
-                Debug.Assert(UI_layer >= 1);
-            }
+                CreateLayer();
 
             RectTransform rtr = transform as RectTransform;
             pixels_per_unit = GetComponent<CanvasScaler>().dynamicPixelsPerUnit;
@@ -264,7 +277,7 @@ namespace BaroqueUI
             back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
             DestroyImmediate(back_quad.GetComponent<Collider>());
 
-            foreach (var canvas in GetComponentsInChildren<Canvas>())
+            foreach (var canvas in GetComponentsInChildren<Canvas>(includeInactive: true))
                 canvas.worldCamera = ortho_camera;
 
             StartCoroutine(UpdateRendering());
@@ -277,9 +290,9 @@ namespace BaroqueUI
 
         void RecSetLayer(int layer)
         {
-            foreach (var canvas in GetComponentsInChildren<Canvas>())
+            foreach (var canvas in GetComponentsInChildren<Canvas>(includeInactive: true))
                 canvas.gameObject.layer = layer;
-            foreach (var rend in GetComponentsInChildren<CanvasRenderer>())
+            foreach (var rend in GetComponentsInChildren<CanvasRenderer>(includeInactive: true))
                 rend.gameObject.layer = layer;
         }
 
@@ -324,7 +337,7 @@ namespace BaroqueUI
 
             PrepareForRendering();
 
-            foreach (InputField inputField in GetComponentsInChildren<InputField>())
+            foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
                 if (inputField.GetComponent<KeyboardVRInput>() == null)
                     inputField.gameObject.AddComponent<KeyboardVRInput>();
