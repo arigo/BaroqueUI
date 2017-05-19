@@ -425,7 +425,6 @@ namespace BaroqueUI
         {
             UpdateHoveringTarget(null);
             pevent = null;
-            controller.SetPointer(null);
         }
 
         public override void OnTriggerDown(Controller controller)
