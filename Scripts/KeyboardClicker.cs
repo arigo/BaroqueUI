@@ -49,7 +49,6 @@ public class KeyboardClicker : ConcurrentControllerTracker
     public bool enableTabKey = true;
     public bool enableEnterKey = true;
     public bool enableEscKey = false;
-    public UnityEvent onEnter, onEsc;
     public float controllerPriority = 200;
 
 
