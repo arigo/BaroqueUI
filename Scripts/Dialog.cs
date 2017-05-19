@@ -574,7 +574,7 @@ namespace BaroqueUI
 
             this.pixels_per_unit = pixels_per_unit;
             render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
-                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 0);
+                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
             Transform tr1 = transform.Find("Ortho Camera");
             if (tr1 != null)
                 ortho_camera = tr1.GetComponent<Camera>();
