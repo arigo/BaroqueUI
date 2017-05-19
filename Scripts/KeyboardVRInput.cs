@@ -1,8 +1,16 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
+
+
+[Serializable]
+public class KeyboardVREnterEvent : UnityEvent<string>
+{
+}
 
 
 internal class KeyboardVRInput : MonoBehaviour, ISelectHandler
@@ -13,8 +21,11 @@ internal class KeyboardVRInput : MonoBehaviour, ISelectHandler
      * 
      * This component can also be manually added to an InputField.  In that case,
      * the 'KeyboardTyping' method here can be added manually to the keyboard's
-     * onKeyboardTyping event.
+     * onKeyboardTyping event.  In return, you get 'On Enter' and 'On Esc' events.
      */
+    public KeyboardVREnterEvent onEnter;
+    public UnityEvent onEsc;
+
     string original_text;
 
     InputField GetInputField()
@@ -126,11 +137,13 @@ internal class KeyboardVRInput : MonoBehaviour, ISelectHandler
                     inputField.DeactivateInputField();    /* in a Dialog, this sends the OnChange event */
                     inputField.ActivateInputField();
                 }
+                onEnter.Invoke(inputField.text);
                 break;
 
             case KeyboardClicker.EKeyState.Special_Esc:
                 inputField.text = original_text;
                 SetBounds(inputField, 0, original_text.Length);
+                onEsc.Invoke();
                 break;
 
             case KeyboardClicker.EKeyState.Special_Backspace:
