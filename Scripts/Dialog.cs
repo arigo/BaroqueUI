@@ -20,6 +20,9 @@ namespace BaroqueUI
                  "Otherwise, we assume a keyboard is already connected.")]
         public bool automaticKeyboard = true;
 
+        [Tooltip("Can the user scroll the whole dialog with the scroll wheel?")]
+        public bool scrollWholeDialog = false;
+
         [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
@@ -360,43 +363,166 @@ namespace BaroqueUI
 
         PointerEventData pevent;
         GameObject current_pressed;
-        bool touchpad_touched;
+        float touchpad_timeout;
+        Vector2 original_touchpad_pos;
+        Vector3 original_position;
+        int touchpad_mode;
+        /* touching the touchpad can be used in three modes: (1) a quick tap is translated into a mouse click;
+         * (2) a touch-and-move-controller is translated into a mouse drag; (3) a touch-and-move-the-finger-over-
+         * -the-touchpad is translated instead into no mouse click at all, but scrolling events.  In addition,
+         * the value (0) is used when the touchpad is not touched at all, and (-1) is used when entering the
+         * zone (it turns into either (0) or (3) but not a (1) or (2)).  In modes (1)(2)(3) we have grabbed the 
+         * controller. */
+
+        const float TOUCHPAD_CLICK_TIME = 0.25f;
+        const float TOUCHPAD_SCROLL_DISTANCE = 0.16f;
+        const float TOUCHPAD_SCROLL_FACTOR = 100f;
+        const float TOUCHPAD_SCROLL_SPACE_EDGE = 0.04f;
+        const float TOUCHPAD_DRAG_SPACE_DISTANCE = 0.08f;
 
         public override void OnEnter(Controller controller)
         {
             pevent = new PointerEventData(EventSystem.current);
-            touchpad_touched = controller.touchpadTouched;
+            touchpad_mode = -1;
+            original_touchpad_pos = controller.touchpadPosition;
         }
 
         public override void OnMoveOver(Controller controller)
         {
-            bool was_touched = touchpad_touched;
-            touchpad_touched = controller.touchpadTouched;
-
-            if (was_touched && controller.GrabbedControllerTracker() == this)
+            /* the controller is supposed to be grabbed when touchpad_mode is 1, 2 or 3. */
+            if (touchpad_mode > 0 && controller.GrabbedControllerTracker() != this)
             {
-                if (!touchpad_touched)
+                touchpad_mode = 0;   /* lost the grab */
+                Debug.LogWarning("lost the grab");
+            }
+
+            if (!controller.touchpadTouched)
+            {
+                switch (touchpad_mode)
                 {
-                    controller.GrabFromScript(false);
-                    OnTriggerUp(controller);
+                    case -1:
+                        Debug.Log("!touched, -1 => 0");
+                        touchpad_mode = 0;
+                        break;
+
+                    case 1:
+                        /* that was a quick tap: emit now the click, at the original position */
+                        Debug.Log("quick tap, 1 => 0");
+                        touchpad_mode = 0;
+                        controller.GrabFromScript(false);
+                        MouseDown(original_position);
+                        MouseUp(original_position);
+                        break;
+
+                    case 2:
+                        /* end dragging */
+                        Debug.Log("end dragging, 2 => 0");
+                        touchpad_mode = 0;
+                        controller.GrabFromScript(false);
+                        MouseUp(controller.position);
+                        break;
+
+                    case 3:
+                        /* end scrolling */
+                        Debug.Log("end scrolling, 3 => 0");
+                        touchpad_mode = 0;
+                        controller.SetScrollWheel(false);
+                        controller.GrabFromScript(false);
+                        break;
                 }
-                else
-                    OnTriggerDrag(controller);
-                return;
+
+                // handle enter and exit events (highlight)
+                GameObject new_target = null;
+                if (UpdateCurrentPoint(controller.position))
+                    new_target = pevent.pointerCurrentRaycast.gameObject;
+
+                UpdateHoveringTarget(new_target);
             }
-            if (touchpad_touched && !was_touched)
+            else
             {
-                controller.GrabFromScript(true);
-                OnTriggerDown(controller);
-                return;
+                switch (touchpad_mode)
+                {
+                    case 0:
+                        /* starting to touch.  Go to mode 1: no actual click until we release, we wait for
+                         * TOUCHPAD_CLICK_TIME, or we move the controller in space at least 
+                         * TOUCHPAD_DRAD_SPACE_DISTANCE2. */
+                        Debug.Log("start to touch, 0 => 1");
+                        controller.GrabFromScript(true);
+                        touchpad_timeout = Time.time + TOUCHPAD_CLICK_TIME;
+                        original_touchpad_pos = controller.touchpadPosition;
+                        original_position = controller.position;
+                        touchpad_mode = 1;
+                        break;
+
+                    case 1:
+                        if (Vector2.Distance(original_touchpad_pos, controller.touchpadPosition) > TOUCHPAD_SCROLL_DISTANCE)
+                        {
+                            /* moving the finger, go to mode 3 */
+                            Debug.Log("start scrolling, 1 => 3");
+                            touchpad_mode = 3;
+                            controller.SetScrollWheel(true);
+                        }
+                        else if (Time.time >= touchpad_timeout ||
+                                 Vector3.Distance(original_position, controller.position) > TOUCHPAD_DRAG_SPACE_DISTANCE)
+                        {
+                            /* timeout or enough movement, go to mode 2 */
+                            Debug.Log("timeout or enough movement, 1 => 2");
+                            MouseDown(original_position);
+                            touchpad_mode = 2;
+                        }
+                        break;
+
+                    case -1:
+                        if (Vector2.Distance(original_touchpad_pos, controller.touchpadPosition) > TOUCHPAD_SCROLL_DISTANCE)
+                        {
+                            /* moving the finger, go to mode 3 */
+                            Debug.Log("start scrolling, -1 => 3");
+                            controller.GrabFromScript(true);
+                            touchpad_mode = 3;
+                            controller.SetScrollWheel(true);
+                        }
+                        break;
+                }
+
+                switch (touchpad_mode)
+                {
+                    case 2:
+                        /* dragging... */
+                        MouseMove(controller);
+                        break;
+
+                    case 3:
+                        /* scrolling... */
+                        bool in_bounds = UpdateCurrentPoint(controller.position);
+                        if (in_bounds)
+                        {
+                            GameObject target = pevent.pointerCurrentRaycast.gameObject;
+                            pevent.scrollDelta = (controller.touchpadPosition - original_touchpad_pos) * TOUCHPAD_SCROLL_FACTOR;
+                            //Debug.Log("scroll: " + pevent.scrollDelta.x + " " + pevent.scrollDelta.y);
+                            GameObject go = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.scrollHandler);
+                            //Debug.Log("scroll: sent to " + target.name + ", result = " + (go == null ? "NULL" : go.name));
+
+                            if (go == null && scrollWholeDialog)
+                            {
+                                /* not sent anywhere.  Move the whole dialog box around, if we're not close to the edge */
+                                float delta_x = pevent.scrollDelta.x > 0 ? -TOUCHPAD_SCROLL_SPACE_EDGE : TOUCHPAD_SCROLL_SPACE_EDGE;
+                                float delta_y = pevent.scrollDelta.y > 0 ? -TOUCHPAD_SCROLL_SPACE_EDGE : TOUCHPAD_SCROLL_SPACE_EDGE;
+
+                                if (UpdateCurrentPoint(controller.position - delta_x * transform.right) &&
+                                    UpdateCurrentPoint(controller.position - delta_y * transform.up))
+                                {
+                                    transform.position -= (pevent.scrollDelta.x * transform.right + pevent.scrollDelta.y * transform.up)
+                                        / unitsPerMeter;
+                                }
+                            }
+                        }
+                        original_touchpad_pos = controller.touchpadPosition;
+
+                        controller.SetPointer(null);
+                        return;   /* don't change the pointer */
+                }
             }
 
-            // handle enter and exit events (highlight)
-            GameObject new_target = null;
-            if (UpdateCurrentPoint(controller))
-                new_target = pevent.pointerCurrentRaycast.gameObject;
-
-            UpdateHoveringTarget(new_target);
             UpdateCursor(controller);
         }
 
@@ -410,14 +536,14 @@ namespace BaroqueUI
             go.transform.localScale = new Vector3(1, 1, distance_to_plane);
         }
 
-        bool UpdateCurrentPoint(Controller controller, bool allow_out_of_bounds = false)
+        bool UpdateCurrentPoint(Vector3 controller_position, bool allow_out_of_bounds = false)
         {
-            Vector2 screen_point = GetComponent<DialogRenderer>().ScreenPoint(controller.position);
+            Vector2 screen_point = GetComponent<DialogRenderer>().ScreenPoint(controller_position);
             pevent.position = screen_point;
 
             var results = new List<RaycastResult>();
             foreach (var rend in GetComponentsInChildren<DialogRenderer>())
-                rend.CustomRaycast(controller.position, results);
+                rend.CustomRaycast(controller_position, results);
 
             RaycastResult rr = new RaycastResult { depth = -1, screenPosition = screen_point };
             if (!BestRaycastResult(results, ref rr))
@@ -426,7 +552,7 @@ namespace BaroqueUI
                     return false;
             }
             rr.worldNormal = transform.forward;
-            rr.worldPosition = Vector3.ProjectOnPlane(controller.position - transform.position, transform.forward) + transform.position;
+            rr.worldPosition = Vector3.ProjectOnPlane(controller_position - transform.position, transform.forward) + transform.position;
             pevent.pointerCurrentRaycast = rr;
             return rr.gameObject != null;
         }
@@ -476,7 +602,12 @@ namespace BaroqueUI
 
         public override void OnTriggerDown(Controller controller)
         {
-            if (UpdateCurrentPoint(controller))
+            MouseDown(controller.position);
+        }
+
+        void MouseDown(Vector3 controller_position)
+        {
+            if (UpdateCurrentPoint(controller_position))
             {
                 pevent.pressPosition = pevent.position;
                 pevent.pointerPressRaycast = pevent.pointerCurrentRaycast;
@@ -501,7 +632,12 @@ namespace BaroqueUI
 
         public override void OnTriggerDrag(Controller controller)
         {
-            if (UpdateCurrentPoint(controller, allow_out_of_bounds: true))
+            MouseMove(controller);
+        }
+
+        void MouseMove(Controller controller)
+        {
+            if (UpdateCurrentPoint(controller.position, allow_out_of_bounds: true))
             {
                 if (pevent.pointerDrag != null)
                     ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.dragHandler);
@@ -511,7 +647,13 @@ namespace BaroqueUI
 
         public override void OnTriggerUp(Controller controller)
         {
-            bool in_bounds = UpdateCurrentPoint(controller);
+            MouseUp(controller.position);
+            touchpad_mode = 0;
+        }
+
+        void MouseUp(Vector3 controller_position)
+        {
+            bool in_bounds = UpdateCurrentPoint(controller_position);
 
             if (pevent.pointerDrag != null)
             {
