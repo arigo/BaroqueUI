@@ -62,13 +62,14 @@ namespace BaroqueUI
 
         static Dialog popupShown;   /* globally, a single one for now */
         static object popupRequester;
+        static int popupCloseTriggerOutside;   /* bitmask, see Update() */
 
         static internal bool ShouldShowPopup(object model, GameObject requester)
         {
             /* If 'requester' is not null, use that to identify the owner of the dialog box
              * and hide if called a second time.  If it is null, then use instead 'model'
              * (the dialog template or the Menu instance). */
-            object new_requester = (requester != null ? requester : model);
+        object new_requester = (requester != null ? requester : model);
             bool should_hide = false;
             if (popupShown != null && popupShown)
             {
@@ -79,6 +80,7 @@ namespace BaroqueUI
             }
             popupShown = null;
             popupRequester = new_requester;
+            popupCloseTriggerOutside = 0;
             return !should_hide;
         }
 
@@ -92,6 +94,7 @@ namespace BaroqueUI
 
             DisplayDialog();
             popupShown = this;
+            popupCloseTriggerOutside = 1 << 16;
             return this;
         }
 
@@ -357,25 +360,52 @@ namespace BaroqueUI
 
         PointerEventData pevent;
         GameObject current_pressed;
+        bool touchpad_touched;
 
         public override void OnEnter(Controller controller)
         {
             pevent = new PointerEventData(EventSystem.current);
+            touchpad_touched = controller.touchpadTouched;
         }
 
         public override void OnMoveOver(Controller controller)
         {
+            bool was_touched = touchpad_touched;
+            touchpad_touched = controller.touchpadTouched;
+
+            if (was_touched && controller.GrabbedControllerTracker() == this)
+            {
+                if (!touchpad_touched)
+                {
+                    controller.GrabFromScript(false);
+                    OnTriggerUp(controller);
+                }
+                else
+                    OnTriggerDrag(controller);
+                return;
+            }
+            if (touchpad_touched && !was_touched)
+            {
+                controller.GrabFromScript(true);
+                OnTriggerDown(controller);
+                return;
+            }
+
             // handle enter and exit events (highlight)
             GameObject new_target = null;
             if (UpdateCurrentPoint(controller))
                 new_target = pevent.pointerCurrentRaycast.gameObject;
 
             UpdateHoveringTarget(new_target);
+            UpdateCursor(controller);
+        }
 
+        void UpdateCursor(Controller controller)
+        {
             float distance_to_plane = transform.InverseTransformPoint(controller.position).z * -0.06f;
             if (distance_to_plane < 1)
                 distance_to_plane = 1;
-            GameObject go = controller.SetPointer("Cursor");  /* XXX */
+            GameObject go = controller.SetPointer("Cursor");  /* XXX? */
             go.transform.rotation = transform.rotation;
             go.transform.localScale = new Vector3(1, 1, distance_to_plane);
         }
@@ -476,6 +506,7 @@ namespace BaroqueUI
                 if (pevent.pointerDrag != null)
                     ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.dragHandler);
             }
+            UpdateCursor(controller);
         }
 
         public override void OnTriggerUp(Controller controller)
@@ -510,6 +541,54 @@ namespace BaroqueUI
             if (!plane.Raycast(ray, out enter))
                 enter = 0;
             return 100 + enter;
+        }
+
+
+        /****************************************************************************************/
+
+        private void Update()
+        {
+            /* bits of popupCloseTriggerOutside:
+                    bit 16: active
+                    bits 0 or 1: trigger is up
+                    bits 8 or 9: controller was outside the whole time trigger was down 
+             */
+            if (popupShown == null || !popupShown)
+                popupCloseTriggerOutside = 0;
+
+            if (popupCloseTriggerOutside != 0)
+            {
+                int i = 0;
+                foreach (var ctrl in BaroqueUI.GetControllersIfCreated())
+                {
+                    if (ctrl.HoverControllerTracker() == this)
+                        popupCloseTriggerOutside &= ~(0x0100 << i);   /* remove bit 8/9: we are inside */
+
+                    if (ctrl.GetButton(EControllerButton.Trigger))
+                    {
+                        if ((popupCloseTriggerOutside & (0x01 << i)) != 0)    /* was up, pressing just now */
+                        {
+                            popupCloseTriggerOutside &= ~(0x01 << i);         /* remove bit 0/1: we are down */
+                            if (ctrl.HoverControllerTracker() != this)
+                                popupCloseTriggerOutside |= (0x0100 << i);    /* set bit 8/9 if we are outside */
+                        }
+                    }
+                    else
+                    {
+                        if ((popupCloseTriggerOutside & (0x01 << i)) == 0)    /* was down, releasing just now */
+                        {
+                            popupCloseTriggerOutside |= (0x01 << i);
+
+                            if ((popupCloseTriggerOutside & (0x0100 << i)) != 0)    /* was outside the whole time trigger was down */
+                            {
+                                /* we tracked a press and a release entirely outside, so close the dialog */
+                                Destroy(popupShown.gameObject);
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+            }
         }
 
 

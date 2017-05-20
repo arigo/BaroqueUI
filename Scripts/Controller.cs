@@ -388,18 +388,18 @@ namespace BaroqueUI
                 BaseControllerTracker tracker = ctrl.tracker_hover;
                 if (tracker is ControllerTracker)
                 {
-                    if (ctrl.is_grabbing)
-                        switch (ctrl.grabbing_button)
-                        {
-                            case EControllerButton.Trigger:
-                                (tracker as ControllerTracker).OnTriggerDrag(ctrl);
-                                break;
-                            case EControllerButton.Grip:
-                                (tracker as ControllerTracker).OnGripDrag(ctrl);
-                                break;
-                        }
-                    else
-                        (tracker as ControllerTracker).OnMoveOver(ctrl);
+                    switch (ctrl.is_grabbing ? ctrl.grabbing_button : null)
+                    {
+                        case EControllerButton.Trigger:
+                            (tracker as ControllerTracker).OnTriggerDrag(ctrl);
+                            break;
+                        case EControllerButton.Grip:
+                            (tracker as ControllerTracker).OnGripDrag(ctrl);
+                            break;
+                        default:
+                            (tracker as ControllerTracker).OnMoveOver(ctrl);
+                            break;
+                    }
                 }
                 else if (tracker is ConcurrentControllerTracker)
                 {
