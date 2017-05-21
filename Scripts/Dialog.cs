@@ -55,7 +55,7 @@ namespace BaroqueUI
 
         public static Dialog MakePopup(string name_in_scene, Controller controller, GameObject requester = null)
         {
-            GameObject gobj = BaroqueUI.FindPossiblyInactive(name_in_scene);
+            GameObject gobj = BaroqueUIMain.FindPossiblyInactive(name_in_scene);
             Dialog dlg = gobj.GetComponent<Dialog>();
             return dlg.MakePopup(controller, requester);
         }
@@ -89,7 +89,7 @@ namespace BaroqueUI
 
         internal Dialog DoShowPopup(Controller controller)
         {
-            Vector3 head_forward = controller.position - BaroqueUI.GetHeadTransform().position;
+            Vector3 head_forward = controller.position - BaroqueUIMain.GetHeadTransform().position;
             Vector3 fw = controller.forward + head_forward.normalized;
             fw.y = 0;
             transform.forward = fw;
@@ -236,7 +236,7 @@ namespace BaroqueUI
 #endif
 
             /* set up the main camera to hide these two layers */
-            BaroqueUI.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
+            BaroqueUIMain.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
         }
 
         public void DisplayDialog()
@@ -701,7 +701,7 @@ namespace BaroqueUI
             if (popupCloseTriggerOutside != 0)
             {
                 int i = 0;
-                foreach (var ctrl in BaroqueUI.GetControllersIfCreated())
+                foreach (var ctrl in BaroqueUIMain.GetControllers())
                 {
                     if (ctrl.HoverControllerTracker() == this)
                         popupCloseTriggerOutside &= ~(0x0100 << i);   /* remove bit 8/9: we are inside */
@@ -812,6 +812,12 @@ namespace BaroqueUI
             this.pixels_per_unit = pixels_per_unit;
             render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
                                                (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
+            /* This feels like a hack, but to get UI elements from a 3D position, we need a Camera
+             * to issue a Raycast().  This "camera" is set up to "look" from the controller's point 
+             * of view, usually orthogonally from the plane of the UI (but it could also be along
+             * the controller's direction, if we go for ray-casting selection).  This is inspired 
+             * from https://github.com/VREALITY/ViveUGUIModule.
+             */
             Transform tr1 = transform.Find("Ortho Camera");
             if (tr1 != null)
                 ortho_camera = tr1.GetComponent<Camera>();

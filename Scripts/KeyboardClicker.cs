@@ -241,7 +241,7 @@ namespace BaroqueUI
             }
 
             foreach (Canvas canvas in GetComponentsInChildren<Canvas>())
-                canvas.worldCamera = BaroqueUI.GetControllerCamera();
+                canvas.worldCamera = GetControllerCamera();
 
             locals = new List<Local>();
         }
@@ -306,7 +306,7 @@ namespace BaroqueUI
             position.y += dy;
             position.z = -20;
 
-            var pevent = BaroqueUI.MoveControllerCamera(transform.TransformPoint(position), transform.forward);
+            var pevent = MoveControllerCamera(transform.TransformPoint(position), transform.forward);
 
             List<RaycastResult> results = new List<RaycastResult>();
             foreach (var raycaster in GetComponentsInChildren<GraphicRaycaster>())
@@ -320,6 +320,34 @@ namespace BaroqueUI
                 return null;
             KeyInfo result;
             return key_infos.TryGetValue(btn, out result) ? result : null;
+        }
+
+
+        /*********************************************************************************************/
+
+        static Camera controllerCamera;   /* See Dialog.ortho_camera for comments about this */
+
+        static internal Camera GetControllerCamera()
+        {
+            if (controllerCamera == null)   // includes 'has been destroyed'
+            {
+                controllerCamera = new GameObject("Controller Camera").AddComponent<Camera>();
+                controllerCamera.clearFlags = CameraClearFlags.Nothing;
+                controllerCamera.cullingMask = 0;
+                controllerCamera.pixelRect = new Rect { x = 0, y = 0, width = 10, height = 10 };
+                controllerCamera.nearClipPlane = 0.001f;
+            }
+            return controllerCamera;
+        }
+
+        static internal PointerEventData MoveControllerCamera(Vector3 position, Vector3 forward)
+        {
+            PointerEventData pevent = new PointerEventData(EventSystem.current);
+            Camera camera = GetControllerCamera();
+            camera.transform.position = position;
+            camera.transform.rotation = Quaternion.LookRotation(forward);
+            pevent.position = new Vector2(5, 5);   /* at the center of the 10x10-pixels "camera" */
+            return pevent;
         }
 
 

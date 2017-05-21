@@ -56,7 +56,7 @@ namespace BaroqueUI
         {
             if (active_controller == null)
             {
-                foreach (var ctrl in BaroqueUI.GetControllers())
+                foreach (var ctrl in BaroqueUIMain.GetControllers())
                 {
                     if (ctrl.Matches(controllerSelection) && ctrl.GetButton(controllerButton))
                     {
@@ -150,8 +150,8 @@ namespace BaroqueUI
 
         void ChangeLocation()
         {
-            Transform camera_rig = BaroqueUI.GetSteamVRManager().transform;
-            Transform steamvr_camera = BaroqueUI.GetHeadTransform();
+            Transform camera_rig = BaroqueUIMain.GetSteamVRManager().transform;
+            Transform steamvr_camera = BaroqueUIMain.GetHeadTransform();
             Vector3 v = camera_rig.position + destination_position - steamvr_camera.position;
             v.y = destination_position.y;
             camera_rig.position = v;
