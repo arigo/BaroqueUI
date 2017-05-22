@@ -136,6 +136,7 @@ namespace BaroqueUI
 
 
         Dictionary<MonoBehaviour, ControllerTracker> all_trackers;
+        List<ControllerTracker> global_trackers;
         int auto_free_trackers;
 
         ControllerTracker GetOrBuildControllerTracker(MonoBehaviour tracker)
@@ -146,14 +147,24 @@ namespace BaroqueUI
             ct = new ControllerTracker(this, tracker);
             ct.AutoRegister();
             all_trackers[tracker] = ct;
+            if (ct.IsGlobal())
+                global_trackers.Add(ct);
 
             if (--auto_free_trackers <= 0)
             {
                 var new_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
+                var new_global_trackers = new List<ControllerTracker>();
                 foreach (var kv in all_trackers)
+                {
                     if (kv.Key != null)    // meaning 'has not been freed'
+                    {
                         new_trackers[kv.Key] = kv.Value;
+                        if (kv.Value.IsGlobal())
+                            new_global_trackers.Add(kv.Value);
+                    }
+                }
                 all_trackers = new_trackers;
+                global_trackers = new_global_trackers;
                 auto_free_trackers = all_trackers.Count / 2 + 16;
             }
 
@@ -165,12 +176,13 @@ namespace BaroqueUI
 
 
         static readonly Vector3 POS_TO_CURSOR = new Vector3(0, -0.006f, 0.056f);
+        const int TOUCHPAD_TOUCHED = 0x10000;
 
         VRControllerState_t controllerState;
         uint bitmask_buttons, prev_bitmask_buttons;
         Vector3 current_position;
         Quaternion current_rotation;
-        ControllerTracker tracker_hover, tracker_trigger, tracker_grip, tracker_touchpad;
+        ControllerTracker tracker_hover, grabbed_trigger, grabbed_grip, grabbed_touchpad;
         GameObject pointer_object, pointer_object_prefab;
         int controller_index;
 
@@ -182,13 +194,16 @@ namespace BaroqueUI
         SteamVR_TrackedObject trackedObject;
         bool scrollWheelVisible;
 
-        Collider[] overlapping_colliders;
+        Dictionary<ControllerTracker, float> overlapping_trackers;
+        static List<ControllerTracker> called_controllers_update;
 
         internal void Initialize(int index)
         {
             controller_index = index;
             all_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
+            global_trackers = new List<ControllerTracker>();
             auto_free_trackers = 16;
+            overlapping_trackers = new Dictionary<ControllerTracker, float>();
 
             trackedObject = GetComponent<SteamVR_TrackedObject>();
             if (trackedObject == null)
@@ -203,11 +218,12 @@ namespace BaroqueUI
 
         void ReadControllerState()
         {
-            /* Updates the state fields; updates 'is_tracking' and 'prev_button_bitmask'.
-             * Invokes OverlapSphere(), but should not call user code.  This ensures
-             * that OverlapSphere() will not see objects created just now, where
-             * Start() has not been called yet.
+            /* Updates the state fields; updates 'is_tracking' and 'bitmask_buttons';
+            /* may cause un-grabbing and so 'grabbed_*' may be reset to null;
+             * sets 'tracker_hover_next'.
              */
+            prev_bitmask_buttons = bitmask_buttons;
+
             var system = OpenVR.System;
             if (system == null || !isActiveAndEnabled ||
                 !system.GetControllerState((uint)trackedObject.index, ref controllerState,
@@ -215,12 +231,15 @@ namespace BaroqueUI
             {
                 bitmask_buttons = 0;
                 is_tracking_active = false;
+                tracker_hover_next = null;
+                ResetVelocityEstimates();
             }
             else
             {
                 /* read the button state */
                 ulong trigger = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Trigger));
                 ulong pad = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
+                ulong pad_touch = controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong grip = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_Grip));
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
 
@@ -228,8 +247,8 @@ namespace BaroqueUI
                 if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
                 if (grip != 0) { b |= (1U << (int)EControllerButton.Grip); }
                 if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
+                if (pad_touch != 0) b |= TOUCHPAD_TOUCHED;
                 if (trigger != 0) { b |= (1U << (int)EControllerButton.Trigger); }
-                prev_bitmask_buttons = bitmask_buttons;
                 bitmask_buttons = b;
 
                 if (!is_tracking_active)
@@ -237,30 +256,18 @@ namespace BaroqueUI
                     prev_bitmask_buttons = bitmask_buttons;
                     is_tracking_active = true;
                 }
-
-                overlapping_colliders = Physics.OverlapSphere(ComputePosition(), 0.02f, Physics.AllLayers,
-                                                              QueryTriggerInteraction.Collide);
             }
-        }
 
-        void FindTrackerHoverNext()
-        {
-            /* may cause un-grabbing and so 'tracker_*' may be reset to null;
-             * sets 'tracker_hover_next'. */
+            /* un-grab */
 
-            if (tracker_trigger != null && !triggerPressed)
+            if (grabbed_trigger != null && !triggerPressed)
                 UnGrabTrigger();
-            if (tracker_grip != null && !gripPressed)
+            if (grabbed_grip != null && !gripPressed)
                 UnGrabGrip();
-            if (tracker_touchpad != null && !touchpadTouched)
+            if (grabbed_touchpad != null && !touchpadPressed)
                 UnGrabTouchpad();
 
-            if (!is_tracking_active)
-            {
-                tracker_hover_next = null;
-                ResetVelocityEstimates();
-            }
-            else
+            if (is_tracking_active)
             {
                 /* read the position/rotation and update the velocity estimation */
                 current_position = ComputePosition();
@@ -268,55 +275,58 @@ namespace BaroqueUI
                 UpdateVelocityEstimates();
 
                 /* find the next BaseControllerTracker at that position, taking the highest
-                 * priority one.  If tracker_hover is also one of the other 'tracker_*',
-                 * then keep it instead.
+                 * priority one. */
+                var potential = new HashSet<Transform>();
+
+                foreach (var coll in Physics.OverlapSphere(current_position, 0.02f, Physics.AllLayers,
+                                                           QueryTriggerInteraction.Collide))
+                {
+                    Transform tr = coll.transform;
+                    while (tr != null)
+                    {
+                        if (!potential.Add(tr))
+                            break;     /* already in the set */
+                        tr = tr.parent;
+                    }
+                }
+
+                float best_priority = float.NegativeInfinity;
+                ControllerTracker best = null;
+
+                foreach (Transform tr in potential)
+                {
+                    foreach (var tracker in tr.GetComponents<MonoBehaviour>())
+                    {
+                        ControllerTracker ct;
+                        if (!all_trackers.TryGetValue(tracker, out ct))
+                            continue;
+
+                        float priority = ct.get_priority(this);
+                        if (priority == float.NegativeInfinity)
+                            continue;
+                        Debug.Assert(priority < float.PositiveInfinity);
+
+                        overlapping_trackers[ct] = priority;
+
+                        if (priority > best_priority || (priority == best_priority && ct.creation_order > best.creation_order))
+                        {
+                            best_priority = priority;
+                            best = ct;
+                        }
+                    }
+                }
+
+                /* If tracker_hover is also one of the 'grabbed_*', then keep it instead.
+                 * We still do the loop above in order to get 'overlapping_trackers'.
                  */
                 if (tracker_hover != null && 
-                    (tracker_hover == tracker_trigger || tracker_hover == tracker_grip || tracker_hover == tracker_touchpad))
+                    (tracker_hover == grabbed_trigger || tracker_hover == grabbed_grip || tracker_hover == grabbed_touchpad))
                 {
-                    overlapping_colliders = null;
                     tracker_hover_next = tracker_hover;
                     tracker_hover_next_priority = float.PositiveInfinity;
                 }
                 else
                 {
-                    var potential = new HashSet<Transform>();
-
-                    foreach (var coll in overlapping_colliders)
-                    {
-                        Transform tr = coll.transform;
-                        while (tr != null)
-                        {
-                            if (!potential.Add(tr))
-                                break;     /* already in the set */
-                            tr = tr.parent;
-                        }
-                    }
-                    overlapping_colliders = null;
-
-                    float best_priority = float.NegativeInfinity;
-                    ControllerTracker best = null;
-
-                    foreach (Transform tr in potential)
-                    {
-                        foreach (var tracker in tr.GetComponents<MonoBehaviour>())
-                        {
-                            ControllerTracker ct;
-                            if (!all_trackers.TryGetValue(tracker, out ct))
-                                continue;
-
-                            float priority = ct.get_priority(this);
-                            if (priority == float.NegativeInfinity)
-                                continue;
-                            Debug.Assert(priority < float.PositiveInfinity);
-
-                            if (priority > best_priority || (priority == best_priority && ct.creation_order > best.creation_order))
-                            {
-                                best_priority = priority;
-                                best = ct;
-                            }
-                        }
-                    }
                     tracker_hover_next = best;
                     tracker_hover_next_priority = best_priority;
                 }
@@ -325,20 +335,25 @@ namespace BaroqueUI
 
         void UnGrabTrigger()
         {
-            tracker_trigger.onTriggerUp(this);
-            tracker_trigger = null;
+            grabbed_trigger.onTriggerUp(this);
+            grabbed_trigger = null;
         }
 
         void UnGrabGrip()
         {
-            tracker_grip.onGripUp(this);
-            tracker_grip = null;
+            grabbed_grip.onGripUp(this);
+            grabbed_grip = null;
         }
 
         void UnGrabTouchpad()
         {
-            tracker_touchpad.onTouchpadUp(this);
-            tracker_touchpad = null;
+            grabbed_touchpad.onTouchpadUp(this);
+            grabbed_touchpad = null;
+        }
+
+        bool IsClickingNow()
+        {
+            return (bitmask_buttons & ~prev_bitmask_buttons & ~TOUCHPAD_TOUCHED) != 0;
         }
 
         static void ResolveControllerConflicts(Controller[] controllers)
@@ -353,25 +368,73 @@ namespace BaroqueUI
                  * the same, non-Concurrent, ControllerTracker */
                 Controller forced_out;
 
-                ...;
-
-                if (right_ctrl.is_clicking_now)
+                if (right_ctrl.IsClickingNow())
                     forced_out = left_ctrl;
-                else if (left_ctrl.is_clicking_now)
+                else if (left_ctrl.IsClickingNow())
                     forced_out = right_ctrl;
-                else if (right_ctrl.is_grabbing)
+                else if (right_ctrl.tracker_hover_next_priority > left_ctrl.tracker_hover_next_priority)
                     forced_out = left_ctrl;
-                else if (left_ctrl.is_grabbing)
+                else if (right_ctrl.tracker_hover_next_priority < left_ctrl.tracker_hover_next_priority)
                     forced_out = right_ctrl;
-                else if (right_ctrl.tracker_hover_next_priority >= left_ctrl.tracker_hover_next_priority)
-                    forced_out = left_ctrl;
+                else if ((left_ctrl.bitmask_buttons & TOUCHPAD_TOUCHED) != 0)
+                    forced_out = right_ctrl;
                 else
-                    forced_out = right_ctrl;
+                    forced_out = left_ctrl;
 
                 /* force one of the controllers "out" of the zone, and force a trigger-release if grabbing */
-                if (forced_out.is_grabbing)
-                    forced_out.UnGrab();
+                if (forced_out.grabbed_trigger == tracker)
+                    forced_out.UnGrabTrigger();
+                if (forced_out.grabbed_grip == tracker)
+                    forced_out.UnGrabGrip();
+                if (forced_out.grabbed_touchpad == tracker)
+                    forced_out.UnGrabTouchpad();
+
                 forced_out.tracker_hover_next = null;
+            }
+        }
+
+        static void CallControllersUpdate(Controller[] controllers)
+        {
+            Debug.Assert(controllers.Length == 2);   /* for now, always exactly two */
+            Dictionary<ControllerTracker, float> left_cts, right_cts;
+            left_cts = controllers[0].overlapping_trackers;
+            right_cts = controllers[1].overlapping_trackers;
+
+            var cts = new List<ControllerTracker>(right_cts.Keys);
+            foreach (var ct in left_cts.Keys)
+                if (!right_cts.ContainsKey(ct))
+                    cts.Add(ct);
+
+            cts.Sort((ct2, ct1) =>   // reverse sorting by priority
+            {
+                float val1l, val1r, val2l, val2r;
+                if (!left_cts.TryGetValue(ct1, out val1l)) val1l = float.NegativeInfinity;
+                if (!right_cts.TryGetValue(ct1, out val1r)) val1r = float.NegativeInfinity;
+                if (!left_cts.TryGetValue(ct2, out val2l)) val2l = float.NegativeInfinity;
+                if (!right_cts.TryGetValue(ct2, out val2r)) val2r = float.NegativeInfinity;
+                return Mathf.Max(val1l, val1r).CompareTo(Mathf.Max(val2l, val2r));
+            });
+
+            foreach (var ct in cts)
+            {
+                Controller[] ctrls = Array.FindAll(controllers, (ctrl) => ctrl.overlapping_trackers.ContainsKey(ct));
+                ct.onControllersUpdate(ctrls);
+            }
+            foreach (var ctrl in controllers)
+                ctrl.overlapping_trackers.Clear();
+
+            foreach (var ct in called_controllers_update)
+            {
+                if (!left_cts.ContainsKey(ct) && !right_cts.ContainsKey(ct))
+                    ct.onControllersUpdate(new Controller[0]);
+            }
+            called_controllers_update = cts;
+
+            Controller[] active_controllers = Array.FindAll(controllers, (ctrl) => ctrl.is_tracking_active);
+            foreach (var ctrl in controllers)
+            {
+                foreach (var gt in ctrl.global_trackers)
+                    gt.onControllersUpdate(active_controllers);
             }
         }
 
@@ -469,12 +532,11 @@ namespace BaroqueUI
         static internal void UpdateAllControllers(Controller[] controllers)
         {
             foreach (var ctrl in controllers)
-                ctrl.ReadControllerState();    /* read state, calls OverlapSphere() */
-
-            foreach (var ctrl in controllers)
-                ctrl.FindTrackerHoverNext();    /* call OnTriggerUp(), update hovers */
+                ctrl.ReadControllerState();    /* read state, calls OverlapSphere(), calls UnGrabXxx(), update hovers */
 
             ResolveControllerConflicts(controllers);
+
+            CallControllersUpdate(controllers);   /* calls OnControllerUpdates() */
 
             CallControllerMoves(controllers);   /* calls OnMoveOver/OnTriggerDrag/OnMove */
 

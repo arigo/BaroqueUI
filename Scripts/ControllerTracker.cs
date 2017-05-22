@@ -18,6 +18,7 @@ namespace BaroqueUI
         Grip = 0x08,
         Menu = 0x10,
         Touchpad = 0x20,
+        IsGlobal = 0x40,
     }
 
     internal class ControllerTracker
@@ -78,6 +79,14 @@ namespace BaroqueUI
             onTouchpadDrag     = FindMethod(EEventSet.Touchpad, "OnTouchpadDrag");
             onTouchpadUp       = FindMethod(EEventSet.Touchpad, "OnTouchpadUp");
             onTouchpadTouching = FindMethod(EEventSet.Touchpad, "OnTouchpadTouching");
+
+            if ((event_sets & EEventSet.Hover) == 0 && tracker.GetComponentInChildren<Collider>() == null)
+                event_sets |= EEventSet.IsGlobal;
+        }
+
+        public bool IsGlobal()
+        {
+            return (event_sets & EEventSet.IsGlobal) != 0;
         }
 
         MethodInfo FindMethodInfo(EEventSet event_set, string method_name)
@@ -97,7 +106,11 @@ namespace BaroqueUI
             if (minfo == null)
                 return Empty;
             else
-                return (ctrl) => { minfo.Invoke(tracker, new object[] { ctrl }); };
+                return (ctrl) => 
+                {
+                    if (tracker && tracker.isActiveAndEnabled)
+                        minfo.Invoke(tracker, new object[] { ctrl });
+                };
         }
 
         ControllersUpdateEvent FindMethodArray(EEventSet event_set, string method_name)
@@ -106,7 +119,11 @@ namespace BaroqueUI
             if (minfo == null)
                 return EmptyArray;
             else
-                return (ctrls) => { minfo.Invoke(tracker, new object[] { ctrls }); };
+                return (ctrls) => 
+                {
+                    if (tracker && tracker.isActiveAndEnabled)
+                        minfo.Invoke(tracker, new object[] { ctrls });
+                };
         }
 
         static void Empty(Controller ctrl) { }
