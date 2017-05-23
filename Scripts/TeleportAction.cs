@@ -135,8 +135,8 @@ namespace BaroqueUI
 
         void ChangeLocation()
         {
-            Transform camera_rig = BaroqueUIMain.GetSteamVRManager().transform;
-            Transform steamvr_camera = BaroqueUIMain.GetHeadTransform();
+            Transform camera_rig = Baroque.GetSteamVRManager().transform;
+            Transform steamvr_camera = Baroque.GetHeadTransform();
             Vector3 v = camera_rig.position + destination_position - steamvr_camera.position;
             v.y = destination_position.y;
             camera_rig.position = v;

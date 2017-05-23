@@ -1,6 +1,4 @@
-﻿#warning "FIX ME"
-#if false
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -11,7 +9,7 @@ using UnityEngine.EventSystems;
 
 namespace BaroqueUI
 {
-    public class Dialog : ControllerTracker
+    public class Dialog : MonoBehaviour
     {
         [Tooltip("If checked, the dialog box is already placed in world space.  " +
                  "If left unchecked, the dialog box is hidden in a different layer " +
@@ -57,7 +55,7 @@ namespace BaroqueUI
 
         public static Dialog MakePopup(string name_in_scene, Controller controller, GameObject requester = null)
         {
-            GameObject gobj = BaroqueUIMain.FindPossiblyInactive(name_in_scene);
+            GameObject gobj = Baroque.FindPossiblyInactive(name_in_scene);
             Dialog dlg = gobj.GetComponent<Dialog>();
             return dlg.MakePopup(controller, requester);
         }
@@ -91,7 +89,7 @@ namespace BaroqueUI
 
         internal Dialog DoShowPopup(Controller controller)
         {
-            Vector3 head_forward = controller.position - BaroqueUIMain.GetHeadTransform().position;
+            Vector3 head_forward = controller.position - Baroque.GetHeadTransform().position;
             Vector3 fw = controller.forward + head_forward.normalized;
             fw.y = 0;
             transform.forward = fw;
@@ -238,7 +236,7 @@ namespace BaroqueUI
 #endif
 
             /* set up the main camera to hide these two layers */
-            BaroqueUIMain.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
+            Baroque.GetHeadTransform().GetComponent<Camera>().cullingMask &= ~(3 << UI_layer);
         }
 
         public void DisplayDialog()
@@ -302,13 +300,18 @@ namespace BaroqueUI
             UpdateRenderingOnce(includeInactive: true);
             StartCoroutine(UpdateRendering());
 
+#warning "FIX ME"
+#if false
             foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
                 if (inputField.GetComponent<KeyboardVRInput>() == null)
                     inputField.gameObject.AddComponent<KeyboardVRInput>();
             }
+#endif
 
             StartAutomaticKeyboard();
+
+            Controller.Register(this, GetPriority);
         }
 
         GameObject SetInitialSelection()
@@ -382,15 +385,16 @@ namespace BaroqueUI
         const float TOUCHPAD_SCROLL_SPACE_EDGE = 0.04f;
         const float TOUCHPAD_DRAG_SPACE_DISTANCE = 0.08f;
 
-        public override void OnEnter(Controller controller)
+        void OnEnter(Controller controller)
         {
             pevent = new PointerEventData(EventSystem.current);
             touchpad_mode = -1;
             original_touchpad_pos = controller.touchpadPosition;
         }
 
-        public override void OnMoveOver(Controller controller)
+        void OnMoveOver(Controller controller)
         {
+#if false
             /* the controller is supposed to be grabbed when touchpad_mode is 1, 2 or 3. */
             if (touchpad_mode > 0 && controller.GrabbedControllerTracker() != this)
             {
@@ -524,7 +528,7 @@ namespace BaroqueUI
                         return;   /* don't change the pointer */
                 }
             }
-
+#endif
             UpdateCursor(controller);
         }
 
@@ -533,9 +537,9 @@ namespace BaroqueUI
             float distance_to_plane = transform.InverseTransformPoint(controller.position).z * -0.06f;
             if (distance_to_plane < 1)
                 distance_to_plane = 1;
-            GameObject go = controller.SetPointer("Cursor");  /* XXX? */
-            go.transform.rotation = transform.rotation;
-            go.transform.localScale = new Vector3(1, 1, distance_to_plane);
+            Transform tr = controller.SetPointer("Cursor");
+            tr.rotation = transform.rotation;
+            tr.localScale = new Vector3(1, 1, distance_to_plane);
         }
 
         bool UpdateCurrentPoint(Vector3 controller_position, bool allow_out_of_bounds = false)
@@ -596,13 +600,13 @@ namespace BaroqueUI
             }
         }
 
-        public override void OnLeave(Controller controller)
+        void OnLeave(Controller controller)
         {
             UpdateHoveringTarget(null);
             pevent = null;
         }
 
-        public override void OnTriggerDown(Controller controller)
+        void OnTriggerDown(Controller controller)
         {
             MouseDown(controller.position);
         }
@@ -632,7 +636,7 @@ namespace BaroqueUI
             }
         }
 
-        public override void OnTriggerDrag(Controller controller)
+        void OnTriggerDrag(Controller controller)
         {
             MouseMove(controller);
         }
@@ -647,7 +651,7 @@ namespace BaroqueUI
             UpdateCursor(controller);
         }
 
-        public override void OnTriggerUp(Controller controller)
+        void OnTriggerUp(Controller controller)
         {
             MouseUp(controller.position);
             touchpad_mode = 0;
@@ -672,12 +676,7 @@ namespace BaroqueUI
                 ExecuteEvents.Execute(current_pressed, pevent, ExecuteEvents.pointerClickHandler);
         }
 
-        public override bool CanStartTeleportAction(Controller controller)
-        {
-            return false;
-        }
-
-        public override float GetPriority(Controller controller)
+        float GetPriority(Controller controller)
         {
             Plane plane = new Plane(transform.forward, transform.position);
             Ray ray = new Ray(controller.position, transform.forward);
@@ -703,7 +702,7 @@ namespace BaroqueUI
             if (popupCloseTriggerOutside != 0)
             {
                 int i = 0;
-                foreach (var ctrl in BaroqueUIMain.GetControllers())
+                foreach (var ctrl in Baroque.GetControllers())
                 {
                     if (ctrl.HoverControllerTracker() == this)
                         popupCloseTriggerOutside &= ~(0x0100 << i);   /* remove bit 8/9: we are inside */
@@ -738,10 +737,13 @@ namespace BaroqueUI
 
         /****************************************************************************************/
 
+#warning "FIX ME"
+#if false
         KeyboardClicker auto_keyboard;
-
+#endif
         void StartAutomaticKeyboard()
         {
+#if false
             if (automaticKeyboard && GetComponentInChildren<KeyboardVRInput>() != null && auto_keyboard == null)
             {
                 GameObject keyboard_prefab = Resources.Load<GameObject>("BaroqueUI/Keyboard");
@@ -759,17 +761,19 @@ namespace BaroqueUI
 
                 auto_keyboard.onKeyboardTyping.AddListener(KeyboardTyping);
             }
+#endif
         }
-
         void StopAutomaticKeyboard()
         {
+#if false
             if (auto_keyboard != null && auto_keyboard)
             {
                 Destroy(auto_keyboard.gameObject);
             }
             auto_keyboard = null;
+#endif
         }
-
+#if false
         public void KeyboardTyping(KeyboardClicker.EKeyState state, string key)
         {
             GameObject gobj = EventSystem.current.currentSelectedGameObject;
@@ -787,6 +791,7 @@ namespace BaroqueUI
             if (keyboardVrInput != null)
                 keyboardVrInput.KeyboardTyping(state, key);
         }
+#endif
     }
 
 
@@ -917,4 +922,3 @@ namespace BaroqueUI
         }
     }
 }
-#endif

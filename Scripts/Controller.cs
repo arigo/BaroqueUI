@@ -49,11 +49,6 @@ namespace BaroqueUI
             return tracker_hover != null ? tracker_hover.tracker : null;
         }
 
-        public void HapticPulse(int durationMicroSec = 500)
-        {
-            SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
-        }
-
         public void GrabHover(bool active)
         {
             if (tracker_hover != null)
@@ -65,6 +60,11 @@ namespace BaroqueUI
             }
         }
 
+        public void HapticPulse(int durationMicroSec = 500)
+        {
+            SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
+        }
+
         public Transform SetPointer(string pointer_name)
         {
             if (pointer_name == "")
@@ -72,19 +72,33 @@ namespace BaroqueUI
                 if (pointer_object != null)
                     Destroy(pointer_object);
                 pointer_object = null;
+                pointer_object_prefab = null;
+                pointer_str_name = null;
                 return null;
             }
             else
-                return SetPointer(Resources.Load<GameObject>("Pointers/" + pointer_name));
+            {
+                if (pointer_name != pointer_str_name)
+                {
+                    SetPointer(Resources.Load<GameObject>("Pointers/" + pointer_name));
+                    pointer_str_name = pointer_name;
+                }
+                return pointer_object.transform;
+            }
         }
 
         public Transform SetPointer(GameObject prefab)
         {
-            if (pointer_object != null)
-                Destroy(pointer_object);
-            pointer_object = Instantiate(prefab, transform);
-            pointer_object.transform.localPosition = POS_TO_CURSOR;
-            pointer_object.transform.localRotation = Quaternion.identity;
+            if (pointer_object_prefab != prefab)
+            {
+                if (pointer_object != null)
+                    Destroy(pointer_object);
+                pointer_str_name = null;
+                pointer_object_prefab = prefab;
+                pointer_object = Instantiate(prefab, transform);
+                pointer_object.transform.localPosition = POS_TO_CURSOR;
+                pointer_object.transform.localRotation = Quaternion.identity;
+            }
             return pointer_object.transform;
         }
 
@@ -106,7 +120,8 @@ namespace BaroqueUI
 
         public int index { get { return controller_index; } }
 
-        public static Controller GetController(int index) { return BaroqueUIMain.GetControllers()[index]; }
+        public static Controller GetController(int index) { return Baroque.GetControllers()[index]; }
+        public static Controller[] GetControllers() { return Baroque.GetControllers(); }
 
         public T GetAdditionalData<T>(ref T[] locals) where T: new()
         {
@@ -154,7 +169,7 @@ namespace BaroqueUI
 
         static ControllerTracker BuildControllerTracker(MonoBehaviour tracker, GetPriorityDelegate get_priority, bool concurrent)
         {
-            BaroqueUIMain.EnsureStarted();
+            Baroque.EnsureStarted();
 
             ControllerTracker ct = new ControllerTracker(tracker);
             ct.AutoRegister(get_priority, concurrent);
@@ -197,7 +212,8 @@ namespace BaroqueUI
         Quaternion current_rotation;
         ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
         uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
-        GameObject pointer_object;
+        GameObject pointer_object, pointer_object_prefab;
+        string pointer_str_name;
         int controller_index;
 
         ControllerTracker tracker_hover_next;
@@ -564,7 +580,7 @@ namespace BaroqueUI
                 /* If it's a non-concurrent tracker and it is used by the other controller, cancel */
                 if (!best.IsConcurrent())
                 {
-                    foreach (var ctrl in BaroqueUIMain.GetControllers())
+                    foreach (var ctrl in Baroque.GetControllers())
                         if (ctrl != this && ctrl.ActiveWith(best))
                             return;
                 }

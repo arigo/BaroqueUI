@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 
 namespace BaroqueUI
 {
-    public static class BaroqueUIMain
+    public static class Baroque
     {
         static public SteamVR_ControllerManager GetSteamVRManager()
         {

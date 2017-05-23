@@ -214,7 +214,7 @@ namespace BaroqueUI
                 core = coll.transform.TransformPoint(coll.bounds.center);
             }
 
-            Debug.DrawLine(core, position);
+            Debug.DrawLine(core, position, Color.cyan, 0.1f);
 
             return -Vector3.Distance(core, position);
         }

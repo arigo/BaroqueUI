@@ -1,6 +1,4 @@
-﻿#warning "FIX ME"
-#if false
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -8,7 +6,7 @@ using UnityEngine;
 
 namespace BaroqueUI
 {
-    public class GrabbableObject : ControllerTracker
+    public class GrabbableObject : MonoBehaviour
     {
         public Color highlightColor = new Color(1, 0, 0, 0.667f);
         public Color dragColor = new Color(1, 0, 0, 0.333f);
@@ -18,20 +16,25 @@ namespace BaroqueUI
         Rigidbody original_nonkinematic;
         Dictionary<Renderer, Material[]> original_materials;
 
-        public override void OnEnter(Controller controller)
+        private void Start()
+        {
+            Controller.Register(this);
+        }
+
+        public void OnEnter(Controller controller)
         {
             /* OnEnter: we are entering the grabbed object's volume.  Change to highlightColor. */
             ChangeColor(highlightColor);
         }
 
-        public override void OnLeave(Controller controller)
+        public void OnLeave(Controller controller)
         {
             /* OnLeave: we are leaving the grabbed object's volume.  Change to Color.clear,
              * which restores the original materials. */
             ChangeColor(Color.clear);
         }
 
-        public override void OnTriggerDown(Controller controller)
+        public void OnTriggerDown(Controller controller)
         {
             /* Called when the trigger button is pressed. */
             origin_rotation = Quaternion.Inverse(controller.rotation) * transform.rotation;
@@ -51,14 +54,14 @@ namespace BaroqueUI
             }
         }
 
-        public override void OnTriggerDrag(Controller controller)
+        public void OnTriggerDrag(Controller controller)
         {
             /* Dragging... */
             transform.rotation = controller.rotation * origin_rotation;
             transform.position = controller.position + transform.rotation * origin_position;
         }
 
-        public override void OnTriggerUp(Controller controller)
+        public void OnTriggerUp(Controller controller)
         {
             /* OnTriggerUp: we revert the color back to highlightColor.  Note that the order of the events
              * is well-defined: a OnEnter is always sent before OnTriggerDown, which is always sent
@@ -85,7 +88,7 @@ namespace BaroqueUI
             return result;
         }
 
-        protected void ChangeColor(Color color)
+        public void ChangeColor(Color color)
         {
             /* To change the color of the grabbed object, we hack around and change all renderer's
              * "_Color" property.
@@ -145,4 +148,3 @@ namespace BaroqueUI
         }
     }
 }
-#endif

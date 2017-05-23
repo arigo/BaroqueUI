@@ -59,12 +59,14 @@ In a few steps:
 
 
 
-BaroqueUIMain
--------------
+Baroque
+-------
 
 This class contains only static methods.  The most important ones are:
 
-* ``GetControllers()`` returns an array of ``Controller`` objects.  See below.
+* ``GetControllers()`` returns an array of ``Controller`` objects.
+  This static method is also available on the ``Controller`` class.
+  See below.
 
 * ``GetHeadTransform()`` returns the Transform of the headset.
 
@@ -107,14 +109,15 @@ Check whether the finger is touching the touchpad and where,
 and contains logic to interpret finger movements.  See below.
 
         public MonoBehaviour HoverControllerTracker();
-        public MonoBehaviour GrabbedControllerTracker()
 
 Return which "controller tracker" (see below) the controller
-is currently over, or is currently grabbed (i.e. locked inside).
+is currently over.
 
-        public void GrabFromScript(MonoBehaviour locked);
+        public void GrabHover(bool active);
 
-Locks the "tracker", or unlocks it if ``null``.
+Locks or unlocks the current hover tracker.  As long as it is locked,
+the controller cannot "leave".  It will be considered to be inside the
+zone of that same tracker until at least ``GrabHover(false)`` is called.
 
         public void HapticPulse(int durationMicroSec = 500);
 
@@ -145,7 +148,13 @@ typical for 2D mouse pointer hints.
         public int index;
 
 The index of this controller: 0 for left, or 1 for right.  This is the
-index inside the ``BaroqueUIMain.GetControllers()`` array.
+index inside the ``Controller.GetControllers()`` array.
+
+		public static Controller GetController(int index);
+		public static Controller[] GetControllers();
+
+Return the controller by index, or the list of all controllers (same as
+``Baroque.GetControllers()``).
 
         public T GetAdditionalData<T>(ref T[] locals) where T: new();
 
@@ -173,23 +182,25 @@ of the "trigger" kind.  This is used to know the maximal interaction area.
 The signature of the Register() static method is:
 
         static void Register(MonoBehaviour tracker,
-                             float priority = 0.0f,
+                             float priority,
 							 bool concurrent = false);
 
 		delegate float GetPriorityDelegate(Controller controller);
 		static void Register(MonoBehaviour tracker,
-                             GetPriorityDelegate priority,
+                             GetPriorityDelegate priority = ...,
 							 bool concurrent = false);
 
 The "priority" is used to pick trackers in case there are overlapping
-colliders.  The priority is given to trackers where "priority" is highest.
-Typically, the delegate version of "priority" is used to vary the priority
-based on the exact controller position.  The default is a delegate that
-computes a negative priority, equal to minus the distance between the
-controller and a "core point" (like the collider box or sphere's center) or
-"core segment" (like the collider capsule's central axis).  If the returned
-priority is ``float.NegativeInfinity``, then the controller is considered
-completely outside the tracker.
+colliders.  The highest "priority" value is choosen first.  The priority
+is given either as a plain float, or as a delegate: the latter is used to
+vary the priority based on the exact controller position.  If not specified,
+the priority is computed as follows: it is a negative number equal to minus
+the distance between the controller and a "core point" (usually the center
+of the collider, but for capsule colliders it is the closest point on the
+segment between the center of the two end spheres).
+
+If the returned priority is ``float.NegativeInfinity``, then the controller
+is considered completely outside the tracker.
 
 If the tracker is registered with ``concurrent: false`` (the default),
 then BaroqueUI takes care for you that only one controller can be
@@ -197,6 +208,20 @@ interacting with the given tracker, not both at the same time.  It
 simplifies the logic you need and avoids bugs due to a rarely-tested use
 case.  If you say ``concurrent: true``, then you must handle the case
 that events might be called for both controllers concurrently.
+
+There are three kinds of trackers:
+
+* Hover trackers, which have colliders and an ``OnEnter``, ``OnMoveOver``
+  and/or ``OnLeave`` method.  At any point in time, each controller is
+  "inside" zero or one hover tracker.
+
+* Non-hover local trackers: they have colliders but only other event
+  methods, like ``OnTriggerDown``.  They are never the controller's hover
+  tracker, but the event methods are called anyway if the current hover
+  tracker doesn't implement the same methods.
+
+* Global trackers: same as non-hover local trackers, but without colliders.
+  These trackers are always at a lower priority than the local trackers.
 
 
 Event sets
@@ -218,10 +243,10 @@ OnControllersUpdate
 
 The special method ``OnControllersUpdate`` (note the plural) is called
 on all trackers that define it, either when the tracker touches one of
-the controllers, or used to touch it just before.  It is passed as
-argument an array of controllers that are touching now.  That means that
-after both controllers leave a tracker, ``OnControllersUpdate`` is
-called once more with an empty array.
+the controllers, or when it used to touch it just before.  It is passed
+as argument an array of controllers that are touching now.  (That means
+that after both controllers leave a tracker, ``OnControllersUpdate`` is
+called once more with an empty array.)
 
 
 Hovering event set
