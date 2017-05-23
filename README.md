@@ -120,14 +120,15 @@ Locks the "tracker", or unlocks it if ``null``.
 
 Send a haptic pulse to the controller.
 
-        public GameObject SetPointer(string pointer_name);
-        public GameObject SetPointerPrefab(GameObject prefab);
+        public Transform SetPointer(string pointer_name);
+        public Transform SetPointer(GameObject prefab);
 
 Set the "mouse pointer".  This is a small object that is visible in
 front of the controller, centered at the point that is at
 ``Controller.position``.  If given by name, it must be a GameObject from
-a ``Resources`` directory, in a subdirectory ``Pointers``.  When either
-function is called with ``null``, the pointer is removed.
+a ``Resources`` directory, in a subdirectory ``Pointers``.  Call with
+an empty string to remove the pointer.  The result is the transform of
+the pointer object (or null).
 
         public void SetScrollWheel(bool visible);
 

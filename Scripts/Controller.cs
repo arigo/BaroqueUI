@@ -54,29 +54,38 @@ namespace BaroqueUI
             SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
         }
 
-        public GameObject SetPointer(string pointer_name)
+        public void GrabHover(bool active)
         {
-            return SetPointerPrefab(pointer_name != null ? Resources.Load<GameObject>("Pointers/" + pointer_name) : null);
+            if (tracker_hover != null)
+            {
+                if (active)
+                    tracker_hover_lock |= MANUAL_LOCK;
+                else
+                    tracker_hover_lock &= ~MANUAL_LOCK;
+            }
         }
 
-        public GameObject SetPointerPrefab(GameObject prefab)
+        public Transform SetPointer(string pointer_name)
         {
-            if (pointer_object_prefab != prefab)
+            if (pointer_name == "")
             {
                 if (pointer_object != null)
                     Destroy(pointer_object);
-
-                if (prefab == null)
-                    pointer_object = null;
-                else
-                {
-                    pointer_object = Instantiate(prefab, transform);
-                    pointer_object.transform.localPosition = POS_TO_CURSOR;
-                    pointer_object.transform.localRotation = Quaternion.identity;
-                }
-                pointer_object_prefab = prefab;
+                pointer_object = null;
+                return null;
             }
-            return pointer_object;
+            else
+                return SetPointer(Resources.Load<GameObject>("Pointers/" + pointer_name));
+        }
+
+        public Transform SetPointer(GameObject prefab)
+        {
+            if (pointer_object != null)
+                Destroy(pointer_object);
+            pointer_object = Instantiate(prefab, transform);
+            pointer_object.transform.localPosition = POS_TO_CURSOR;
+            pointer_object.transform.localRotation = Quaternion.identity;
+            return pointer_object.transform;
         }
 
         public void SetScrollWheel(bool visible)
@@ -176,14 +185,16 @@ namespace BaroqueUI
 
 
         static readonly Vector3 POS_TO_CURSOR = new Vector3(0, -0.006f, 0.056f);
-        const int TOUCHPAD_TOUCHED = 0x10000;
+        const uint TOUCHPAD_TOUCHED = 0x10000;
+        const uint MANUAL_LOCK = 0x4000;
 
         VRControllerState_t controllerState;
-        uint bitmask_buttons, prev_bitmask_buttons;
+        uint bitmask_buttons, bitmask_buttons_down;
         Vector3 current_position;
         Quaternion current_rotation;
-        ControllerTracker tracker_hover, grabbed_trigger, grabbed_grip, grabbed_touchpad;
-        GameObject pointer_object, pointer_object_prefab;
+        ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
+        uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
+        GameObject pointer_object;
         int controller_index;
 
         ControllerTracker tracker_hover_next;
@@ -219,24 +230,26 @@ namespace BaroqueUI
         void ReadControllerState()
         {
             /* Updates the state fields; updates 'is_tracking' and 'bitmask_buttons';
-            /* may cause un-grabbing and so 'grabbed_*' may be reset to null;
+            /* may cause un-grabbing (deactivating) of buttons and so 'active_*' may be reset to null;
              * sets 'tracker_hover_next'.
              */
-            prev_bitmask_buttons = bitmask_buttons;
-
             var system = OpenVR.System;
             if (system == null || !isActiveAndEnabled ||
                 !system.GetControllerState((uint)trackedObject.index, ref controllerState,
                                            (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(VRControllerState_t))))
             {
                 bitmask_buttons = 0;
+                bitmask_buttons_down = 0;
                 is_tracking_active = false;
                 tracker_hover_next = null;
+                tracker_hover_lock = 0;
                 ResetVelocityEstimates();
             }
             else
             {
                 /* read the button state */
+                uint prev_bitmask_buttons = bitmask_buttons;
+
                 ulong trigger = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Trigger));
                 ulong pad = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong pad_touch = controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
@@ -250,26 +263,33 @@ namespace BaroqueUI
                 if (pad_touch != 0) b |= TOUCHPAD_TOUCHED;
                 if (trigger != 0) { b |= (1U << (int)EControllerButton.Trigger); }
                 bitmask_buttons = b;
+                bitmask_buttons_down = bitmask_buttons & ~prev_bitmask_buttons;
+
+                /* ignore trigger click when grip is down and vice-versa */
+                if (grip != 0)
+                    bitmask_buttons_down &= ~(1U << (int)EControllerButton.Trigger);
+                if (trigger != 0)
+                    bitmask_buttons_down &= ~(1U << (int)EControllerButton.Grip);
 
                 if (!is_tracking_active)
                 {
-                    prev_bitmask_buttons = bitmask_buttons;
+                    bitmask_buttons_down = 0;
                     is_tracking_active = true;
                 }
             }
 
             /* un-grab */
 
-            if (grabbed_trigger != null && !triggerPressed)
-                UnGrabTrigger();
-            if (grabbed_grip != null && !gripPressed)
-                UnGrabGrip();
-            if (grabbed_touchpad != null && !touchpadPressed)
-                UnGrabTouchpad();
+            if (active_trigger != null && !triggerPressed)
+                DeactivateTrigger();
+            if (active_grip != null && !gripPressed)
+                DeactivateGrip();
+            if (active_touchpad != null && !touchpadPressed)
+                DeactivateTouchpad();
 
             if (is_tracking_active)
             {
-                /* read the position/rotation and update the velocity estimation */
+                /* read the position and rotation, and update the velocity estimates */
                 current_position = ComputePosition();
                 current_rotation = transform.rotation;
                 UpdateVelocityEstimates();
@@ -292,6 +312,7 @@ namespace BaroqueUI
 
                 float best_priority = float.NegativeInfinity;
                 ControllerTracker best = null;
+                overlapping_trackers.Clear();   /* should already be cleared, but better safe than sorry */
 
                 foreach (Transform tr in potential)
                 {
@@ -304,24 +325,20 @@ namespace BaroqueUI
                         float priority = ct.get_priority(this);
                         if (priority == float.NegativeInfinity)
                             continue;
-                        Debug.Assert(priority < float.PositiveInfinity);
 
                         overlapping_trackers[ct] = priority;
 
-                        if (priority > best_priority || (priority == best_priority && ct.creation_order > best.creation_order))
-                        {
-                            best_priority = priority;
-                            best = ct;
-                        }
+                        if (ct.IsHover())
+                            ct.PickBetter(priority, ref best, ref best_priority);
                     }
                 }
 
-                /* If tracker_hover is also one of the 'grabbed_*', then keep it instead.
+                /* If tracker_hover_lock is set, we keep tracker_hover.
                  * We still do the loop above in order to get 'overlapping_trackers'.
                  */
-                if (tracker_hover != null && 
-                    (tracker_hover == grabbed_trigger || tracker_hover == grabbed_grip || tracker_hover == grabbed_touchpad))
+                if (tracker_hover_lock != 0)
                 {
+                    Debug.Assert(tracker_hover != null);
                     tracker_hover_next = tracker_hover;
                     tracker_hover_next_priority = float.PositiveInfinity;
                 }
@@ -333,27 +350,33 @@ namespace BaroqueUI
             }
         }
 
-        void UnGrabTrigger()
+        void DeactivateTrigger()
         {
-            grabbed_trigger.onTriggerUp(this);
-            grabbed_trigger = null;
+            active_trigger.onTriggerUp(this);
+            if (active_trigger == tracker_hover)
+                tracker_hover_lock &= ~(1U << (int)EControllerButton.Trigger);
+            active_trigger = null;
         }
 
-        void UnGrabGrip()
+        void DeactivateGrip()
         {
-            grabbed_grip.onGripUp(this);
-            grabbed_grip = null;
+            active_grip.onGripUp(this);
+            if (active_grip == tracker_hover)
+                tracker_hover_lock &= ~(1U << (int)EControllerButton.Grip);
+            active_grip = null;
         }
 
-        void UnGrabTouchpad()
+        void DeactivateTouchpad()
         {
-            grabbed_touchpad.onTouchpadUp(this);
-            grabbed_touchpad = null;
+            active_touchpad.onTouchpadUp(this);
+            if (active_touchpad == tracker_hover)
+                tracker_hover_lock &= ~(1U << (int)EControllerButton.Touchpad);
+            active_touchpad = null;
         }
 
         bool IsClickingNow()
         {
-            return (bitmask_buttons & ~prev_bitmask_buttons & ~TOUCHPAD_TOUCHED) != 0;
+            return (bitmask_buttons_down & ~TOUCHPAD_TOUCHED) != 0;
         }
 
         static void ResolveControllerConflicts(Controller[] controllers)
@@ -368,7 +391,14 @@ namespace BaroqueUI
                  * the same, non-Concurrent, ControllerTracker */
                 Controller forced_out;
 
-                if (right_ctrl.IsClickingNow())
+                /* Heuristics, but will never pick whoever has got 'tracker_hover_lock & MANUAL_LOCK' */
+                if ((right_ctrl.tracker_hover_lock & MANUAL_LOCK) != 0)
+                    forced_out = left_ctrl;
+                else if (left_ctrl.tracker_hover_lock != 0)
+                    forced_out = right_ctrl;
+                else if (right_ctrl.tracker_hover_lock != 0)
+                    forced_out = left_ctrl;
+                else if (right_ctrl.IsClickingNow())
                     forced_out = left_ctrl;
                 else if (left_ctrl.IsClickingNow())
                     forced_out = right_ctrl;
@@ -381,13 +411,16 @@ namespace BaroqueUI
                 else
                     forced_out = left_ctrl;
 
-                /* force one of the controllers "out" of the zone, and force a trigger-release if grabbing */
-                if (forced_out.grabbed_trigger == tracker)
-                    forced_out.UnGrabTrigger();
-                if (forced_out.grabbed_grip == tracker)
-                    forced_out.UnGrabGrip();
-                if (forced_out.grabbed_touchpad == tracker)
-                    forced_out.UnGrabTouchpad();
+                /* Force one of the controllers "out" of the zone, and force a button deactivation if needed.
+                 * In principle, afterwards, it is not possible that the tracker remains locked for both
+                 * controllers, because tracker_hover_lock == MANUAL_LOCK can only be set if the tracker is 
+                 * the current hover in the first place and this tracker cannot be current for both. */
+                if (forced_out.active_trigger == tracker)
+                    forced_out.DeactivateTrigger();
+                if (forced_out.active_grip == tracker)
+                    forced_out.DeactivateGrip();
+                if (forced_out.active_touchpad == tracker)
+                    forced_out.DeactivateTouchpad();
 
                 forced_out.tracker_hover_next = null;
             }
@@ -420,9 +453,6 @@ namespace BaroqueUI
                 Controller[] ctrls = Array.FindAll(controllers, (ctrl) => ctrl.overlapping_trackers.ContainsKey(ct));
                 ct.onControllersUpdate(ctrls);
             }
-            foreach (var ctrl in controllers)
-                ctrl.overlapping_trackers.Clear();
-
             foreach (var ct in called_controllers_update)
             {
                 if (!left_cts.ContainsKey(ct) && !right_cts.ContainsKey(ct))
@@ -438,61 +468,26 @@ namespace BaroqueUI
             }
         }
 
-        static void CallControllerMoves(Controller[] controllers)
+        void CallControllerMove()
         {
-            Debug.Assert(controllers.Length == 2);   /* for now, always exactly two */
-            BaseControllerTracker left_tracker = controllers[0].tracker_hover;
-            BaseControllerTracker right_tracker = controllers[1].tracker_hover;
+            if (active_trigger != null)
+                active_trigger.onTriggerDrag(this);
+            if (active_grip != null)
+                active_grip.onGripDrag(this);
+            if (active_touchpad != null)
+                active_touchpad.onTouchpadDrag(this);
 
-            if (left_tracker == right_tracker)
-            {
-                if (left_tracker == null)
-                    return;     /* both controllers are nowhere */
-
-                if (left_tracker is ConcurrentControllerTracker)
-                {
-                    /* both controllers are over the same ConcurrentControllerTracker */
-                    (left_tracker as ConcurrentControllerTracker).OnMove(FilterNotLeaving(controllers));
-                    return;
-                }
-            }
-
-            foreach (var ctrl in controllers)
-            {
-                BaseControllerTracker tracker = ctrl.tracker_hover;
-                if (tracker is ControllerTracker)
-                {
-                    switch (ctrl.is_grabbing ? ctrl.grabbing_button : null)
-                    {
-                        case EControllerButton.Trigger:
-                            (tracker as ControllerTracker).OnTriggerDrag(ctrl);
-                            break;
-                        case EControllerButton.Grip:
-                            (tracker as ControllerTracker).OnGripDrag(ctrl);
-                            break;
-                        default:
-                            (tracker as ControllerTracker).OnMoveOver(ctrl);
-                            break;
-                    }
-                }
-                else if (tracker is ConcurrentControllerTracker)
-                {
-                    (tracker as ConcurrentControllerTracker).OnMove(FilterNotLeaving(new Controller[] { ctrl }));
-                }
-            }
-        }
-
-        static Controller[] FilterNotLeaving(Controller[] controllers)
-        {
-            return Array.FindAll(controllers, c => c.tracker_hover == c.tracker_hover_next);
+            if (tracker_hover != null && ((tracker_hover_lock & ~MANUAL_LOCK) == 0))
+                tracker_hover.onMoveOver(this);
         }
 
         void LeaveNow()
         {
-            BaseControllerTracker prev = tracker_hover;
+            ControllerTracker prev = tracker_hover;
             tracker_hover = null;
-            prev.OnLeave(this);
-            SetPointer(null);
+            tracker_hover_lock = 0;
+            prev.onLeave(this);
+            SetPointer("");
         }
 
         void CallLeaveEvents()
@@ -508,43 +503,94 @@ namespace BaroqueUI
 
             if (tracker_hover == null)
             {
-                tracker_hover_next.OnEnter(this);
                 tracker_hover = tracker_hover_next;
+                tracker_hover.onEnter(this);
             }
             Debug.Assert(tracker_hover == tracker_hover_next);
+        }
 
-            if (is_clicking_now && !is_grabbing)
+        void HandleButtonDown(EControllerButton btn, EEventSet event_set, ref ControllerTracker active_tracker)
+        {
+            if ((bitmask_buttons_down & (1U << (int)btn)) == 0)
+                return;      /* not pressing this button right now */
+
+            /* does 'tracker_hover' handle the event_set? */
+            ControllerTracker best = null;
+            if (tracker_hover != null && (tracker_hover.event_sets & event_set) != 0)
             {
-                switch (clicking_button)
-                {
-                    case EControllerButton.Trigger:
-                        tracker_hover.OnTriggerDown(this);
-                        break;
-                    case EControllerButton.Grip:
-                        tracker_hover.OnGripDown(this);
-                        break;
-                }
-                grabbing_button = clicking_button;
-                is_grabbing = true;
+                best = tracker_hover;
             }
+            else
+            {
+                /* no, pick the best-priority one among the trackers we touch which
+                 * do NOT implement hovering */
+                float best_priority = float.NegativeInfinity;
+
+                foreach (var kv in overlapping_trackers)
+                {
+                    ControllerTracker ct = kv.Key;
+                    float priority = kv.Value;
+
+                    if (!ct.IsHover())
+                        ct.PickBetter(priority, ref best, ref best_priority);
+                }
+
+                /* if not found, then look for global trackers */
+                if (best == null)
+                {
+                    foreach (var ct in global_trackers)
+                    {
+                        float priority = ct.get_priority(this);
+                        if (priority != float.NegativeInfinity)
+                            ct.PickBetter(priority, ref best, ref best_priority);
+                    }
+                    if (best == null)
+                        return;       /* still not found, ignore the button click */
+                }
+            }
+
+            if (active_tracker != null)
+                return;      /* should not occur, but you never know */
+            active_tracker = best;
+            switch (event_set)
+            {
+                case EEventSet.Trigger:  best.onTriggerDown(this);  break;
+                case EEventSet.Grip:     best.onGripDown(this);     break;
+                case EEventSet.Touchpad: best.onTouchpadDown(this); break;
+            }
+        }
+
+        void CallButtonDown()
+        {
+            if (bitmask_buttons_down != 0)
+            {
+                HandleButtonDown(EControllerButton.Trigger, EEventSet.Trigger, ref active_trigger);
+                HandleButtonDown(EControllerButton.Grip, EEventSet.Grip, ref active_grip);
+                HandleButtonDown(EControllerButton.Touchpad, EEventSet.Touchpad, ref active_touchpad);
+            }
+            overlapping_trackers.Clear();
         }
 
         static internal void UpdateAllControllers(Controller[] controllers)
         {
             foreach (var ctrl in controllers)
-                ctrl.ReadControllerState();    /* read state, calls OverlapSphere(), calls UnGrabXxx(), update hovers */
+                ctrl.ReadControllerState();    /* read state, calls OverlapSphere(), calls OnXxxUp(), update hovers */
 
             ResolveControllerConflicts(controllers);
 
             CallControllersUpdate(controllers);   /* calls OnControllerUpdates() */
 
-            CallControllerMoves(controllers);   /* calls OnMoveOver/OnTriggerDrag/OnMove */
-
             foreach (var ctrl in controllers)
                 ctrl.CallLeaveEvents();    /* calls OnLeave() */
 
             foreach (var ctrl in controllers)
-                ctrl.CallEnterEvents();    /* calls OnEnter/OnTriggerDown */
+                ctrl.CallEnterEvents();    /* calls OnEnter() */
+
+            foreach (var ctrl in controllers)
+                ctrl.CallButtonDown();     /* calls OnXxxDown() */
+
+            foreach (var ctrl in controllers)
+                ctrl.CallControllerMove();    /* calls OnMoveOver/OnXxxDrag */
         }
 
 

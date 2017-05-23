@@ -80,13 +80,28 @@ namespace BaroqueUI
             onTouchpadUp       = FindMethod(EEventSet.Touchpad, "OnTouchpadUp");
             onTouchpadTouching = FindMethod(EEventSet.Touchpad, "OnTouchpadTouching");
 
-            if ((event_sets & EEventSet.Hover) == 0 && tracker.GetComponentInChildren<Collider>() == null)
+            if (!IsHover() && tracker.GetComponentInChildren<Collider>() == null)
                 event_sets |= EEventSet.IsGlobal;
         }
 
         public bool IsGlobal()
         {
             return (event_sets & EEventSet.IsGlobal) != 0;
+        }
+
+        public bool IsHover()
+        {
+            return (event_sets & EEventSet.Hover) != 0;
+        }
+
+        public void PickBetter(float priority, ref ControllerTracker current_best, ref float current_best_priority)
+        {
+            if (priority > current_best_priority ||
+                    (priority == current_best_priority && creation_order > current_best.creation_order))
+            {
+                current_best_priority = priority;
+                current_best = this;
+            }
         }
 
         MethodInfo FindMethodInfo(EEventSet event_set, string method_name)
@@ -106,11 +121,7 @@ namespace BaroqueUI
             if (minfo == null)
                 return Empty;
             else
-                return (ctrl) => 
-                {
-                    if (tracker && tracker.isActiveAndEnabled)
-                        minfo.Invoke(tracker, new object[] { ctrl });
-                };
+                return (ctrl) => { Run(minfo, new object[] { ctrl }); };
         }
 
         ControllersUpdateEvent FindMethodArray(EEventSet event_set, string method_name)
@@ -119,14 +130,25 @@ namespace BaroqueUI
             if (minfo == null)
                 return EmptyArray;
             else
-                return (ctrls) => 
-                {
-                    if (tracker && tracker.isActiveAndEnabled)
-                        minfo.Invoke(tracker, new object[] { ctrls });
-                };
+                return (ctrls) => { Run(minfo, new object[] { ctrls }); };
         }
 
         static void Empty(Controller ctrl) { }
         static void EmptyArray(Controller[] ctrls) { }
+
+        void Run(MethodInfo minfo, object[] args)
+        {
+            if (tracker && tracker.isActiveAndEnabled)
+            {
+                try
+                {
+                    minfo.Invoke(tracker, args);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
+        }
     }
 }
