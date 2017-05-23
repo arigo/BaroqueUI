@@ -166,18 +166,20 @@ up the MonoBehaviour:
 
         Controller.Register(this);
 
-You also need to make sure the GameObject or its children contain at least one
-collider, typically of the "trigger" kind.  This is used to know the maximal
-interaction area.
+With the exception of "global trackers" (see below), you also need to make
+sure the GameObject or its children contain at least one collider, typically
+of the "trigger" kind.  This is used to know the maximal interaction area.
 
 The signature of the Register() static method is:
 
+        static void Register(MonoBehaviour tracker,
+                             float priority = 0.0f,
+							 bool concurrent = false);
+
 		delegate float GetPriorityDelegate(Controller controller);
 		static void Register(MonoBehaviour tracker,
-                             GetPriorityDelegate priority = ...);
-
-        static void Register(MonoBehaviour tracker,
-                             float priority);
+                             GetPriorityDelegate priority,
+							 bool concurrent = false);
 
 The "priority" is used to pick trackers in case there are overlapping
 colliders.  The priority is given to trackers where "priority" is highest.

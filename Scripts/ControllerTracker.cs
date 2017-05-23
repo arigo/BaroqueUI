@@ -55,10 +55,6 @@ namespace BaroqueUI
 
         public void AutoRegister(GetPriorityDelegate get_priority, bool concurrent)
         {
-            if (get_priority == null)
-                get_priority = (ctrl) => 0.0f;
-            this.get_priority = get_priority;
-
             event_sets = 0;
             if (concurrent)
                 event_sets |= EEventSet.IsConcurrent;
@@ -86,6 +82,22 @@ namespace BaroqueUI
 
             if (!IsHover() && tracker.GetComponentInChildren<Collider>() == null)
                 event_sets |= EEventSet.IsGlobal;
+
+            if (get_priority == null)
+            {
+                var colliders = tracker.GetComponentsInChildren<Collider>();
+                if (colliders.Length == 0)
+                    get_priority = (ctrl) => 0.0f;
+                else
+                    get_priority = (ctrl) =>
+                    {
+                        float highest = -float.NegativeInfinity;
+                        foreach (var coll in colliders)
+                            highest = Mathf.Max(highest, NegativeDistanceToColliderCore(ctrl.position, coll));
+                        return highest;
+                    };
+            }
+            this.get_priority = get_priority;
         }
 
         public bool IsGlobal()
@@ -155,6 +167,56 @@ namespace BaroqueUI
                     Debug.LogException(e);
                 }
             }
+        }
+
+        static float NegativeDistanceToColliderCore(Vector3 position, Collider coll)
+        {
+            Vector3 core;
+
+            if (coll is BoxCollider)
+            {
+                core = coll.transform.TransformPoint((coll as BoxCollider).center);
+            }
+            else if (coll is SphereCollider)
+            {
+                core = coll.transform.TransformPoint((coll as SphereCollider).center);
+            }
+            else if (coll is CapsuleCollider)
+            {
+                CapsuleCollider cc = (CapsuleCollider)coll;
+                core = coll.transform.TransformPoint(cc.center);
+
+                Vector3 delta;
+                switch (cc.direction)
+                {
+                    case 0: delta = new Vector3(1, 0, 0); break;
+                    case 1: delta = new Vector3(0, 1, 0); break;
+                    case 2: delta = new Vector3(0, 0, 1); break;
+                    default: throw new NotImplementedException();
+                }
+                float dist_to_centers = cc.height * 0.5f - cc.radius;
+                if (dist_to_centers > 0)
+                {
+                    Vector3 delta_v = cc.transform.TransformVector(delta);
+                    float dot = Vector3.Dot(delta_v, position - core);
+                    float sqrmag = delta_v.sqrMagnitude;
+                    if (dot >= sqrmag)
+                        core += delta_v;
+                    else if (dot <= -sqrmag)
+                        core -= delta_v;
+                    else
+                        core += Vector3.Project(position - core, delta_v);
+                }
+            }
+            else
+            {
+                /* fall back on center of the axis-aligned bounding box (AABB) */
+                core = coll.transform.TransformPoint(coll.bounds.center);
+            }
+
+            Debug.DrawLine(core, position);
+
+            return -Vector3.Distance(core, position);
         }
     }
 }

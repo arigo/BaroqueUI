@@ -121,9 +121,14 @@ namespace BaroqueUI
             return locals[index];
         }
 
+        public static void Register(MonoBehaviour tracker, float priority, bool concurrent = false)
+        {
+            BuildControllerTracker(tracker, (ctrl) => priority, concurrent);
+        }
+
         public static void Register(MonoBehaviour tracker, GetPriorityDelegate get_priority = null, bool concurrent = false)
         {
-            GetOrBuildControllerTracker(tracker, get_priority, concurrent);
+            BuildControllerTracker(tracker, get_priority, concurrent);
         }
 
         /*public static void ForceLeave(BaseControllerTracker tracker)
@@ -147,14 +152,11 @@ namespace BaroqueUI
         static List<ControllerTracker> global_trackers;
         static int auto_free_trackers;
 
-        static ControllerTracker GetOrBuildControllerTracker(MonoBehaviour tracker, GetPriorityDelegate get_priority, bool concurrent)
+        static ControllerTracker BuildControllerTracker(MonoBehaviour tracker, GetPriorityDelegate get_priority, bool concurrent)
         {
             BaroqueUIMain.EnsureStarted();
 
-            ControllerTracker ct;
-            if (all_trackers.TryGetValue(tracker, out ct))
-                return ct;
-            ct = new ControllerTracker(tracker);
+            ControllerTracker ct = new ControllerTracker(tracker);
             ct.AutoRegister(get_priority, concurrent);
             all_trackers[tracker] = ct;
             if (ct.IsGlobal())
