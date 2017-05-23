@@ -186,18 +186,21 @@ namespace BaroqueUI
                 CapsuleCollider cc = (CapsuleCollider)coll;
                 core = coll.transform.TransformPoint(cc.center);
 
-                Vector3 delta;
+                Vector3 delta, scale1, scale2;
                 switch (cc.direction)
                 {
-                    case 0: delta = new Vector3(1, 0, 0); break;
-                    case 1: delta = new Vector3(0, 1, 0); break;
-                    case 2: delta = new Vector3(0, 0, 1); break;
+                    case 0: delta = new Vector3(1, 0, 0); scale1 = new Vector3(0, 1, 0); scale2 = new Vector3(0, 0, 1); break;
+                    case 1: delta = new Vector3(0, 1, 0); scale1 = new Vector3(0, 0, 1); scale2 = new Vector3(1, 0, 0); break;
+                    case 2: delta = new Vector3(0, 0, 1); scale1 = new Vector3(1, 0, 0); scale2 = new Vector3(0, 1, 0); break;
                     default: throw new NotImplementedException();
                 }
-                float dist_to_centers = cc.height * 0.5f - cc.radius;
-                if (dist_to_centers > 0)
+                Vector3 delta_v = cc.transform.TransformVector(delta) * (cc.height * 0.5f);
+                float radius = Mathf.Max(cc.transform.TransformVector(scale1).magnitude,
+                                         cc.transform.TransformVector(scale2).magnitude) * cc.radius;
+                float delta_v_mag = delta_v.magnitude;
+                if (delta_v_mag > radius)
                 {
-                    Vector3 delta_v = cc.transform.TransformVector(delta);
+                    delta_v *= (delta_v_mag - radius) / delta_v_mag;
                     float dot = Vector3.Dot(delta_v, position - core);
                     float sqrmag = delta_v.sqrMagnitude;
                     if (dot >= sqrmag)
@@ -214,7 +217,7 @@ namespace BaroqueUI
                 core = coll.transform.TransformPoint(coll.bounds.center);
             }
 
-            Debug.DrawLine(core, position, Color.cyan, 0.1f);
+            Baroque.DrawLine(core, position, Color.cyan);
 
             return -Vector3.Distance(core, position);
         }
