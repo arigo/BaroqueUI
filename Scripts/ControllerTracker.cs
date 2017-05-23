@@ -86,16 +86,7 @@ namespace BaroqueUI
             if (get_priority == null)
             {
                 var colliders = tracker.GetComponentsInChildren<Collider>();
-                if (colliders.Length == 0)
-                    get_priority = (ctrl) => 0.0f;
-                else
-                    get_priority = (ctrl) =>
-                    {
-                        float highest = -float.NegativeInfinity;
-                        foreach (var coll in colliders)
-                            highest = Mathf.Max(highest, NegativeDistanceToColliderCore(ctrl.position, coll));
-                        return highest;
-                    };
+                get_priority = (ctrl) => -ctrl.DistanceToColliderCore(colliders);
             }
             this.get_priority = get_priority;
         }
@@ -169,57 +160,5 @@ namespace BaroqueUI
             }
         }
 
-        static float NegativeDistanceToColliderCore(Vector3 position, Collider coll)
-        {
-            Vector3 core;
-
-            if (coll is BoxCollider)
-            {
-                core = coll.transform.TransformPoint((coll as BoxCollider).center);
-            }
-            else if (coll is SphereCollider)
-            {
-                core = coll.transform.TransformPoint((coll as SphereCollider).center);
-            }
-            else if (coll is CapsuleCollider)
-            {
-                CapsuleCollider cc = (CapsuleCollider)coll;
-                core = coll.transform.TransformPoint(cc.center);
-
-                Vector3 delta, scale1, scale2;
-                switch (cc.direction)
-                {
-                    case 0: delta = new Vector3(1, 0, 0); scale1 = new Vector3(0, 1, 0); scale2 = new Vector3(0, 0, 1); break;
-                    case 1: delta = new Vector3(0, 1, 0); scale1 = new Vector3(0, 0, 1); scale2 = new Vector3(1, 0, 0); break;
-                    case 2: delta = new Vector3(0, 0, 1); scale1 = new Vector3(1, 0, 0); scale2 = new Vector3(0, 1, 0); break;
-                    default: throw new NotImplementedException();
-                }
-                Vector3 delta_v = cc.transform.TransformVector(delta) * (cc.height * 0.5f);
-                float radius = Mathf.Max(cc.transform.TransformVector(scale1).magnitude,
-                                         cc.transform.TransformVector(scale2).magnitude) * cc.radius;
-                float delta_v_mag = delta_v.magnitude;
-                if (delta_v_mag > radius)
-                {
-                    delta_v *= (delta_v_mag - radius) / delta_v_mag;
-                    float dot = Vector3.Dot(delta_v, position - core);
-                    float sqrmag = delta_v.sqrMagnitude;
-                    if (dot >= sqrmag)
-                        core += delta_v;
-                    else if (dot <= -sqrmag)
-                        core -= delta_v;
-                    else
-                        core += Vector3.Project(position - core, delta_v);
-                }
-            }
-            else
-            {
-                /* fall back on center of the axis-aligned bounding box (AABB) */
-                core = coll.transform.TransformPoint(coll.bounds.center);
-            }
-
-            Baroque.DrawLine(core, position, Color.cyan);
-
-            return -Vector3.Distance(core, position);
-        }
     }
 }

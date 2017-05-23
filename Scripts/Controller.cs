@@ -146,18 +146,100 @@ namespace BaroqueUI
             BuildControllerTracker(tracker, get_priority, concurrent);
         }
 
-        /*public static void ForceLeave(BaseControllerTracker tracker)
+
+        public float DistanceToColliderCore(Collider[] colliders)
         {
-            foreach (var ctrl in BaroqueUIMain.GetControllers())
+            return DistanceToColliderCore(position, colliders);
+        }
+
+        public float DistanceToColliderCore(Collider coll)
+        {
+            return DistanceToColliderCore(position, coll);
+        }
+
+        public static float DistanceToColliderCore(Vector3 position, Collider[] colliders)
+        {
+            if (colliders.Length == 0)
+                return 0;
+
+            float min_dist = float.PositiveInfinity;
+            foreach (var coll in colliders)
+                min_dist = Mathf.Min(min_dist, DistanceToColliderCore(position, coll));
+            return min_dist;
+        }
+
+        public static float DistanceToColliderCore(Vector3 position, Collider coll)
+        {
+            Vector3 core;
+
+            if (coll is BoxCollider)
             {
-                if (tracker == ctrl.tracker_hover)
+                /* the "core" is an flat rectangle inside the box, defined as the set of points
+                   that have maximal distance to the outside of the box.  The same definition
+                   is actually used for SphereCollider and CapsuleCollider: for a sphere it
+                   is just the central point; for a capsule it is a segment.  For a box, it
+                   is a flat rectangle that might collapse into a segment or a point, depending
+                   on whether the box is a perfect cube or not.
+                 */
+                BoxCollider bc = (BoxCollider)coll;
+                Vector3 p_in = coll.transform.InverseTransformPoint(position) - bc.center;
+                float emin = Mathf.Min(bc.extent.x, bc.extent.y, bc.extent.z);
+                float ex = bc.extent.x - emin;
+                float ey = bc.extent.y - emin;
+                float ez = bc.extent.z - emin;
+                if (p_in.x < -ex) p_in.x = -ex;
+                if (p_in.x >  ex) p_in.x =  ex;
+                if (p_in.y < -ey) p_in.y = -ey;
+                if (p_in.y >  ey) p_in.y =  ey;
+                if (p_in.z < -ez) p_in.z = -ez;
+                if (p_in.z >  ez) p_in.z =  ez;
+                core = coll.transform.TransformPoint(bc.center + p_in);
+            }
+            else if (coll is SphereCollider)
+            {
+                SphereCollider sc = (SphereCollider)coll;
+                core = coll.transform.TransformPoint(sc.center);
+            }
+            else if (coll is CapsuleCollider)
+            {
+                CapsuleCollider cc = (CapsuleCollider)coll;
+                core = coll.transform.TransformPoint(cc.center);
+
+                Vector3 delta, scale1, scale2;
+                switch (cc.direction)
                 {
-                    if (ctrl.is_grabbing)
-                        ctrl.UnGrab();
-                    ctrl.LeaveNow();
+                    case 0: delta = new Vector3(1, 0, 0); scale1 = new Vector3(0, 1, 0); scale2 = new Vector3(0, 0, 1); break;
+                    case 1: delta = new Vector3(0, 1, 0); scale1 = new Vector3(0, 0, 1); scale2 = new Vector3(1, 0, 0); break;
+                    case 2: delta = new Vector3(0, 0, 1); scale1 = new Vector3(1, 0, 0); scale2 = new Vector3(0, 1, 0); break;
+                    default: throw new NotImplementedException();
+                }
+                Vector3 delta_v = cc.transform.TransformVector(delta) * (cc.height * 0.5f);
+                float radius = Mathf.Max(cc.transform.TransformVector(scale1).magnitude,
+                                         cc.transform.TransformVector(scale2).magnitude) * cc.radius;
+                float delta_v_mag = delta_v.magnitude;
+                if (delta_v_mag > radius)
+                {
+                    delta_v *= (delta_v_mag - radius) / delta_v_mag;
+                    float dot = Vector3.Dot(delta_v, position - core);
+                    float sqrmag = delta_v.sqrMagnitude;
+                    if (dot >= sqrmag)
+                        core += delta_v;
+                    else if (dot <= -sqrmag)
+                        core -= delta_v;
+                    else
+                        core += Vector3.Project(position - core, delta_v);
                 }
             }
-        }*/
+            else
+            {
+                /* fall back on center of the axis-aligned bounding box (AABB) */
+                core = coll.transform.TransformPoint(coll.bounds.center);
+            }
+
+            Baroque.DrawLine(core, position, Color.cyan);
+
+            return Vector3.Distance(core, position);
+        }
 
 
         /***************************************************************************************/
@@ -549,7 +631,7 @@ namespace BaroqueUI
             else
             {
                 /* no, pick the best-priority one among the trackers we touch which
-                 * do NOT implement hovering, taking non-concurrency into account */
+                 * do NOT implement hovering */
                 float best_priority = float.NegativeInfinity;
 
                 foreach (var kv in overlapping_trackers)
@@ -557,7 +639,7 @@ namespace BaroqueUI
                     ControllerTracker ct = kv.Key;
                     float priority = kv.Value;
 
-                    if (!ct.IsHover())
+                    if (!ct.IsHover() && (ct.event_sets & event_set) != 0)
                         ct.PickIfBetter(priority, ref best, ref best_priority);
                 }
 
@@ -566,12 +648,13 @@ namespace BaroqueUI
                 {
                     foreach (var ct in global_trackers)
                     {
-                        if (ct.tracker && ct.tracker.isActiveAndEnabled)
-                        {
-                            float priority = ct.get_priority(this);
-                            if (priority != float.NegativeInfinity)
-                                ct.PickIfBetter(priority, ref best, ref best_priority);
-                        }
+                        if ((ct.event_sets & event_set) != 0)
+                            if (ct.tracker && ct.tracker.isActiveAndEnabled)
+                            {
+                                float priority = ct.get_priority(this);
+                                if (priority != float.NegativeInfinity)
+                                    ct.PickIfBetter(priority, ref best, ref best_priority);
+                            }
                     }
                     if (best == null)
                         return;       /* still not found, ignore the button click */
@@ -589,11 +672,16 @@ namespace BaroqueUI
             if (active_tracker != null)
                 return;      /* should not occur, but you never know */
             active_tracker = best;
-            switch (event_set)
+
+            if (best == tracker_hover && btn != EControllerButton.Menu)
+                tracker_hover_lock |= 1U << (int)btn;
+
+            switch (btn)
             {
-                case EEventSet.Trigger:  best.onTriggerDown(this);  break;
-                case EEventSet.Grip:     best.onGripDown(this);     break;
-                case EEventSet.Touchpad: best.onTouchpadDown(this); break;
+                case EControllerButton.Trigger:  best.onTriggerDown(this);  break;
+                case EControllerButton.Grip:     best.onGripDown(this);     break;
+                case EControllerButton.Touchpad: best.onTouchpadDown(this); break;
+                case EControllerButton.Menu:     best.onMenuClick(this);    break;
             }
         }
 
@@ -604,6 +692,9 @@ namespace BaroqueUI
                 HandleButtonDown(EControllerButton.Trigger, EEventSet.Trigger, ref active_trigger);
                 HandleButtonDown(EControllerButton.Grip, EEventSet.Grip, ref active_grip);
                 HandleButtonDown(EControllerButton.Touchpad, EEventSet.Touchpad, ref active_touchpad);
+
+                ControllerTracker active_menu = null;
+                HandleButtonDown(EControllerButton.Menu, EEventSet.Menu, ref active_menu);
             }
             overlapping_trackers.Clear();
         }

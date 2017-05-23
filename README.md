@@ -62,7 +62,8 @@ In a few steps:
 Baroque
 -------
 
-This class contains only static methods.  The most important ones are:
+The class ``Baroque`` contains only static methods.  The most important ones
+are:
 
 * ``GetControllers()`` returns an array of ``Controller`` objects.
   This static method is also available on the ``Controller`` class.
@@ -103,10 +104,10 @@ plays the role of "the position of the mouse pointer" in BaroqueUI.
 
 Check whether individual buttons are pressed or not.
 
-        public Touchpad touchpad;
+        public bool touchpadTouched;
+        public Vector2 touchpadPosition;
 
-Check whether the finger is touching the touchpad and where,
-and contains logic to interpret finger movements.  See below.
+Check whether the finger is touching the touchpad and where.
 
         public MonoBehaviour HoverControllerTracker();
 
@@ -295,45 +296,65 @@ Touchpad
 --------
 
 The touchpad has got a more complicated event set to handle the various
-ways it can be interacted with.
+ways it can be interacted with.  We can touch the touchpad.  Once
+touched, we can actually press the touchpad, or not.  It is also
+possible to move the finger on the touchpad.
 
-We can press the touchpad.  This generates ``OnTouchpadDown``,
-``OnTouchpadDrag``, ``OnTouchpadUp``.  Like above, ``OnMoveOver`` is
-not sent between ``OnTouchpadDown`` and ``OnTouchpadUp``.
+So far, BaroqueUI will interpret all this as one action among three
+possible ones:
 
-On the other hand, we can touch the touchpad without pressing.  As long
-as we do it, plus exactly when we stop, the ``OnTouchpadTouching`` event
-is generated.  This event is sent in addition to ``OnMoveOver``, if the
-tracker is a hover tracker, and not at all if an ``OnXxxDrag`` is being
-sent.
+1. If you press the touchpad, you get ``OnTouchpadDown``,
+   ``OnTouchpadDrag`` and ``OnTouchpadUp``, which work like the
+   other ``OnXxxDown/OnXxxDrag/OnXxxUp`` events.
 
-If the receiver needs to interpret the finger movements, it can use the
-``controller.touchpad`` instance, with the following properties:
+2. If you touch the touchpad and immediately move your finger,
+   you get ``OnTouchpadScroll`` events.
 
-        public bool touched;
-        public Vector2 position;
+3. Otherwise, if you touch the touchpad you get ``OnTapDown``,
+   ``OnTapDrag`` and ``OnTapUp`` events.
 
-Whether we are touching the touchpad now, and the position of the finger
-on it (X and Y coordinates between -1 and 1).
+Only one of these actions is possible at a given time.  The touchpad
+works in BaroqueUI like a state machine with up to 7 states, depending
+on which methods are actually implemented.  The full state machine is
+detailled below (some states don't exist if some actions are not
+implemented):
 
-        public bool is_scrolling;
-        public Vector2 scroll;
 
-Whether we are scrolling (moving the finger across the surface), and if
-so, by how much since the last controller update.  This is true only if
-we move the finger by a threshold amount immediately after we touched
-the touchpad, without moving much the controller itself.
+    <outside the tracker> -----------------------.
+         |                                       | enter when touching
+         | enter when not touching               |
+         |                                       |    .---------------------.
+         |                                       v    v                     |
+         | .----------------------------- <dead touching>                   |
+         v v        untouching     `\          |   |  \                     |
+    <released>                      |          |   |  <out>                 |
+         |    \                     |          |   |            un-pressing |
+         |     <out>            .--------------'   '-------.                |
+         |                      |   |                      |                |
+         | touching             |   |                      |                |
+         v                      |   |                      |                |
+    <small delay> ----------------------------------------\|                |
+         | |                    |   |                      +                |
+         | `-------------------\|   '---------.   .-------\| pressing       |
+         |        moving finger +              \ /         +                |
+         |                      |               |          v                |
+         | timeout or           |               |       <action 1> ---------'
+         | controller move      v               |
+         v                   <action 2>         |
+     <action 3>                 |               |
+         |                      \.              |
+         '--------------------------------------'
 
-        public bool is_tapping;
+The "dead touching" state is if we have the touchpad touched but didn't
+actually start touching it just now and have no other state for it.
 
-Whether we are tapping (touching without scrolling).  This is true only
-if we know that ``is_scrolling`` will not become true during this touch.
-It really means "is touching the touchpad, not pressing it so far, and
-definitely not scrolling".  Note that ``is_tapping`` can be true for a
-long time.  On the other hand, if we touch briefly the touchpad and
-release it before the end of the small delay, then ``is_tapping`` will
-be true at the release, for the minimal period of time of a single
-controller-update tick.
+The "small delay" state selects between the three action states and only
+exists if more than one action state is actually implemented in the
+tracker.
+
+If "action 1" is not implemented, pressing don't cause state changes.
+If "action 2" is not implemented, finger movements don't cause state
+changes.
 
 
 

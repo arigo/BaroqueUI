@@ -392,8 +392,17 @@ namespace BaroqueUI
             original_touchpad_pos = controller.touchpadPosition;
         }
 
-        void OnMoveOver(Controller controller)
+        void OnTouchpadTouching(Controller controller)
         {
+            if (!controller.touchpad.touched)
+            {
+                /* end */
+                controller.GrabFromScript(false);
+                ....;
+            }
+
+
+
 #if false
             /* the controller is supposed to be grabbed when touchpad_mode is 1, 2 or 3. */
             if (touchpad_mode > 0 && controller.GrabbedControllerTracker() != this)
@@ -451,7 +460,7 @@ namespace BaroqueUI
                     case 0:
                         /* starting to touch.  Go to mode 1: no actual click until we release, we wait for
                          * TOUCHPAD_CLICK_TIME, or we move the controller in space at least 
-                         * TOUCHPAD_DRAD_SPACE_DISTANCE2. */
+                         * TOUCHPAD_DRAD_SPACE_DISTANCE. */
                         Debug.Log("start to touch, 0 => 1");
                         controller.GrabFromScript(true);
                         touchpad_timeout = Time.time + TOUCHPAD_CLICK_TIME;
