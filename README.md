@@ -191,6 +191,13 @@ controller and a "core point" (like the collider box or sphere's center) or
 priority is ``float.NegativeInfinity``, then the controller is considered
 completely outside the tracker.
 
+If the tracker is registered with ``concurrent: false`` (the default),
+then BaroqueUI takes care for you that only one controller can be
+interacting with the given tracker, not both at the same time.  It
+simplifies the logic you need and avoids bugs due to a rarely-tested use
+case.  If you say ``concurrent: true``, then you must handle the case
+that events might be called for both controllers concurrently.
+
 
 Event sets
 ----------
@@ -220,14 +227,10 @@ called once more with an empty array.
 Hovering event set
 ------------------
 
-Methods ``OnEnter``, ``OnEnterConcurrent``, ``OnMoveOver``, ``OnLeave``.
-Take a Controller as argument (like all remaining OnXxx methods).
+Methods ``OnEnter``, ``OnMoveOver``, ``OnLeave``.  Each one
+takes a Controller as argument (like all remaining OnXxx methods).
 Called when the controller enters the tracker's zone, stays in it, and
-leaves it.  If the tracker implements ``OnEnter`` instead of
-``OnEnterConcurrent``, then BaroqueUI takes care for you that only one
-controller can be hovering over the given tracker, not both at the same
-time.  It simplifies the logic you need and avoids bugs due to a
-rarely-tested use case.
+leaves it.
 
 If this event set is implemented, the other event sets below are only
 called between ``OnEnterXxx`` and ``OnLeave``.
