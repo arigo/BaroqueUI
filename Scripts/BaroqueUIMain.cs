@@ -88,6 +88,7 @@ namespace BaroqueUI
         {
             if (!controllersReady)
             {
+                Controller.InitControllers();
                 controllers = new Controller[2];
                 left_controller = InitController(GetSteamVRManager().left, 0);
                 right_controller = InitController(GetSteamVRManager().right, 1);
@@ -109,7 +110,7 @@ namespace BaroqueUI
             }
         }
 
-        static void EnsureStarted()
+        static internal void EnsureStarted()
         {
             if (left_controller == null || right_controller == null)   // includes 'has been destroyed'
                 InitControllers();

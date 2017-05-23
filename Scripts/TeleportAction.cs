@@ -10,9 +10,10 @@ namespace BaroqueUI
     public class TeleportAction : MonoBehaviour
     {
         [Header("Teleport beam parameters")]
-        public EControllerSelection controllerSelection;
-        public EControllerButton controllerButton;
-        public float beamForwardVelocity, beamUpVelocity;
+        //public EControllerSelection controllerSelection;
+        //public EControllerButton controllerButton;
+        public float beamForwardVelocity;
+        public float beamUpVelocity;
         public LayerMask traceLayerMask;
         public Color validArcColor, invalidArcColor;
         public Material teleportMaterial;
@@ -22,14 +23,13 @@ namespace BaroqueUI
         Transform invalid_reticle, destination_reticle;
         Vector3 destination_position;
         bool destination_valid;
-        Controller active_controller;
 
         public void Reset()
         {
             beamForwardVelocity = 10f;
             beamUpVelocity = 3f;
-            controllerSelection = EControllerSelection.Either;
-            controllerButton = EControllerButton.Touchpad;
+            //controllerSelection = EControllerSelection.Either;
+            //controllerButton = EControllerButton.Touchpad;
             traceLayerMask = 1 << LayerMask.NameToLayer("Default");
             teleportMaterial = Resources.Load<Material>("BaroqueUI/TeleportPointer");
 
@@ -50,89 +50,74 @@ namespace BaroqueUI
             invalid_reticle.gameObject.SetActive(false);
             destination_reticle = Instantiate<Transform>(destinationReticlePrefab);
             destination_reticle.gameObject.SetActive(false);
+
+            Controller.Register(this);
         }
 
-        void Update()
+        void OnTouchpadDown(Controller controller)
         {
-            if (active_controller == null)
+            arc.Show();
+        }
+
+        void OnTouchpadDrag(Controller controller)
+        {
+            bool saved = Physics.queriesHitTriggers;
+            try
             {
-                foreach (var ctrl in BaroqueUIMain.GetControllers())
+                Physics.queriesHitTriggers = false;
+
+                Transform tr = controller.transform;
+                arc.SetArcData(tr.position, tr.TransformDirection(new Vector3(0, beamUpVelocity, beamForwardVelocity)), true, false);
+
+                destination_valid = false;
+                bool show_invalid = false;
+                RaycastHit hitInfo;
+                if (arc.DrawArc(out hitInfo))
                 {
-                    if (ctrl.Matches(controllerSelection) && ctrl.GetButton(controllerButton))
+                    /* The teleport destination is accepted if we fit a capsule here.  More precisely:
+                        * the capsule starts at ABOVE_GROUND above the hit point of the beam; on top
+                        * of that we check the capsule.  The height of that capsule above around is thus
+                        * from ABOVE_GROUND to ABOVE_GROUND + RADIUS + DISTANCE + RADIUS.  The parameters
+                        * are chosen so that planes of above ~30° cannot be teleported to, because the
+                        * bottom of the capsule always intersects that plane. 
+                        */
+                    const float ABOVE_GROUND = 0.1f, RADIUS = 0.32f, DISTANCE = 1.1f;
+
+                    if (Physics.CheckCapsule(hitInfo.point + (ABOVE_GROUND + RADIUS) * Vector3.up,
+                                                hitInfo.point + (ABOVE_GROUND + RADIUS + DISTANCE) * Vector3.up,
+                                                RADIUS, traceLayerMask, QueryTriggerInteraction.Ignore))
                     {
-                        BaseControllerTracker tracker = ctrl.HoverControllerTracker();
-                        if (tracker == null || tracker.CanStartTeleportAction(ctrl))
-                        {
-                            arc.Show();
-                            active_controller = ctrl;
-                            break;
-                        }
+                        /* invalid position */
+                        invalid_reticle.position = hitInfo.point;
+                        invalid_reticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
+                        show_invalid = true;
+                    }
+                    else
+                    {
+                        /* valid position */
+                        invalid_reticle.gameObject.SetActive(false);
+                        destination_reticle.position = destination_position = hitInfo.point;
+                        destination_valid = true;
                     }
                 }
-                if (active_controller == null)
-                    return;
+                invalid_reticle.gameObject.SetActive(show_invalid);
+                destination_reticle.gameObject.SetActive(destination_valid);
+                arc.SetColor(destination_valid ? validArcColor : invalidArcColor);
             }
-
-            if (active_controller.GetButton(controllerButton))
+            finally
             {
-                bool saved = Physics.queriesHitTriggers;
-                try
-                {
-                    Physics.queriesHitTriggers = false;
-
-                    Transform tr = active_controller.transform;
-                    arc.SetArcData(tr.position, tr.TransformDirection(new Vector3(0, beamUpVelocity, beamForwardVelocity)), true, false);
-
-                    destination_valid = false;
-                    bool show_invalid = false;
-                    RaycastHit hitInfo;
-                    if (arc.DrawArc(out hitInfo))
-                    {
-                        /* The teleport destination is accepted if we fit a capsule here.  More precisely:
-                            * the capsule starts at ABOVE_GROUND above the hit point of the beam; on top
-                            * of that we check the capsule.  The height of that capsule above around is thus
-                            * from ABOVE_GROUND to ABOVE_GROUND + RADIUS + DISTANCE + RADIUS.  The parameters
-                            * are chosen so that planes of above ~30° cannot be teleported to, because the
-                            * bottom of the capsule always intersects that plane. 
-                            */
-                        const float ABOVE_GROUND = 0.1f, RADIUS = 0.32f, DISTANCE = 1.1f;
-
-                        if (Physics.CheckCapsule(hitInfo.point + (ABOVE_GROUND + RADIUS) * Vector3.up,
-                                                    hitInfo.point + (ABOVE_GROUND + RADIUS + DISTANCE) * Vector3.up,
-                                                    RADIUS, traceLayerMask, QueryTriggerInteraction.Ignore))
-                        {
-                            /* invalid position */
-                            invalid_reticle.position = hitInfo.point;
-                            invalid_reticle.rotation = Quaternion.LookRotation(hitInfo.normal) * Quaternion.Euler(90, 0, 0);
-                            show_invalid = true;
-                        }
-                        else
-                        {
-                            /* valid position */
-                            invalid_reticle.gameObject.SetActive(false);
-                            destination_reticle.position = destination_position = hitInfo.point;
-                            destination_valid = true;
-                        }
-                    }
-                    invalid_reticle.gameObject.SetActive(show_invalid);
-                    destination_reticle.gameObject.SetActive(destination_valid);
-                    arc.SetColor(destination_valid ? validArcColor : invalidArcColor);
-                }
-                finally
-                {
-                    Physics.queriesHitTriggers = saved;
-                }
+                Physics.queriesHitTriggers = saved;
             }
-            else
-            {
-                active_controller = null;
-                arc.Hide();
-                invalid_reticle.gameObject.SetActive(false);
-                destination_reticle.gameObject.SetActive(false);
+        }
 
-                if (destination_valid)
-                    StartTeleporting();
-            }
+        void OnTouchpadUp(Controller controller)
+        {
+            arc.Hide();
+            invalid_reticle.gameObject.SetActive(false);
+            destination_reticle.gameObject.SetActive(false);
+
+            if (destination_valid)
+                StartTeleporting();
         }
 
         void StartTeleporting()

@@ -13,17 +13,16 @@ namespace BaroqueUI
     internal enum EEventSet
     {
         Hover = 0x01,
-        HoverConcurrent = 0x02,
-        Trigger = 0x04,
-        Grip = 0x08,
-        Menu = 0x10,
-        Touchpad = 0x20,
+        Trigger = 0x02,
+        Grip = 0x04,
+        Menu = 0x08,
+        Touchpad = 0x10,
+        IsConcurrent = 0x20,
         IsGlobal = 0x40,
     }
 
     internal class ControllerTracker
     {
-        public readonly Controller controller;
         public readonly MonoBehaviour tracker;
         public readonly int creation_order;
         public GetPriorityDelegate get_priority;
@@ -47,21 +46,26 @@ namespace BaroqueUI
 
         static int NUMBERING = 0;
 
-        public ControllerTracker(Controller controller, MonoBehaviour tracker)
+        public ControllerTracker(MonoBehaviour tracker)
         {
-            this.controller = controller;
             this.tracker = tracker;
             creation_order = ++NUMBERING;
             event_sets = 0;
         }
 
-        public void AutoRegister()
+        public void AutoRegister(GetPriorityDelegate get_priority, bool concurrent)
         {
+            if (get_priority == null)
+                get_priority = (ctrl) => 0.0f;
+            this.get_priority = get_priority;
+
+            event_sets = 0;
+            if (concurrent)
+                event_sets |= EEventSet.IsConcurrent;
+
             onControllersUpdate = FindMethodArray(0, "OnControllersUpdate");
 
             onEnter = FindMethod(EEventSet.Hover, "OnEnter");
-            if (onEnter == null)
-                onEnter = FindMethod(EEventSet.Hover | EEventSet.HoverConcurrent, "OnEnterConcurrent");
             onMoveOver = FindMethod(EEventSet.Hover, "OnMoveOver");
             onLeave = FindMethod(EEventSet.Hover, "OnLeave");
 
@@ -94,7 +98,12 @@ namespace BaroqueUI
             return (event_sets & EEventSet.Hover) != 0;
         }
 
-        public void PickBetter(float priority, ref ControllerTracker current_best, ref float current_best_priority)
+        public bool IsConcurrent()
+        {
+            return (event_sets & EEventSet.IsConcurrent) != 0;
+        }
+
+        public void PickIfBetter(float priority, ref ControllerTracker current_best, ref float current_best_priority)
         {
             if (priority > current_best_priority ||
                     (priority == current_best_priority && creation_order > current_best.creation_order))
@@ -119,7 +128,7 @@ namespace BaroqueUI
         {
             MethodInfo minfo = FindMethodInfo(event_set, method_name);
             if (minfo == null)
-                return Empty;
+                return (ctrl) => { };
             else
                 return (ctrl) => { Run(minfo, new object[] { ctrl }); };
         }
@@ -128,13 +137,10 @@ namespace BaroqueUI
         {
             MethodInfo minfo = FindMethodInfo(event_set, method_name);
             if (minfo == null)
-                return EmptyArray;
+                return (ctrls) => { };
             else
                 return (ctrls) => { Run(minfo, new object[] { ctrls }); };
         }
-
-        static void Empty(Controller ctrl) { }
-        static void EmptyArray(Controller[] ctrls) { }
 
         void Run(MethodInfo minfo, object[] args)
         {
