@@ -303,21 +303,22 @@ possible to move the finger on the touchpad.
 So far, BaroqueUI will interpret all this as one action among three
 possible ones:
 
-1. If you press the touchpad, you get ``OnTouchpadDown``,
-   ``OnTouchpadDrag`` and ``OnTouchpadUp``, which work like the
+1. If you press the touchpad, you get ``OnTouchPressDown``,
+   ``OnTouchPressDrag`` and ``OnTouchPressUp``, which work like the
    other ``OnXxxDown/OnXxxDrag/OnXxxUp`` events.
 
 2. If you touch the touchpad and immediately move your finger,
-   you get ``OnTouchpadScroll`` events.
+   you get ``OnTouchScroll`` events.
 
-3. Otherwise, if you touch the touchpad you get ``OnTapDown``,
-   ``OnTapDrag`` and ``OnTapUp`` events.
+3. Otherwise, if you touch the touchpad you get ``OnTouchDown``,
+   ``OnTouchDrag`` and ``OnTouchUp`` events.
 
 Only one of these actions is possible at a given time.  The touchpad
 works in BaroqueUI like a state machine with up to 7 states, depending
 on which methods are actually implemented.  The full state machine is
-detailled below (some states don't exist if some actions are not
-implemented):
+detailled below.  Some states don't exist if some actions are not
+implemented.  To get the most "uncooked" events, implement only action 3
+and poll inside ``OnTouchDrag`` for the other conditions.
 
 
     <outside the tracker> -----------------------.
@@ -336,10 +337,10 @@ implemented):
     <small delay> ----------------------------------------\|                |
          | |                    |   |                      +                |
          | `-------------------\|   '---------.   .-------\| pressing       |
-         |        moving finger +              \ /         +                |
-         |                      |               |          v                |
-         | timeout or           |               |       <action 1> ---------'
-         | controller move      v               |
+         |                      +              \ /         +                |
+         |        moving finger |               |          v                |
+         |                      |               |       <action 1> ---------'
+         | default              v               |
          v                   <action 2>         |
      <action 3>                 |               |
          |                      \.              |
@@ -348,12 +349,16 @@ implemented):
 The "dead touching" state is if we have the touchpad touched but didn't
 actually start touching it just now and have no other state for it.
 
-The "small delay" state selects between the three action states and only
-exists if more than one action state is actually implemented in the
-tracker.
+The "small delay" state selects between the three action states.  There
+is no delay if only one action state is actually implemented in the
+tracker.  The "default" path is followed if the small delay elapses, if
+we move the controller enough in space, or if press and there is no
+"action 1" implemented; or if we untouch the touchpad quickly (in the
+last case, it will leave "action 3" immediately afterwards, but that's
+still registered as a tap).
 
-If "action 1" is not implemented, pressing don't cause state changes.
-If "action 2" is not implemented, finger movements don't cause state
+If "action 1" is not implemented, pressing doesn't cause state changes.
+If "action 2" is not implemented, moving the finger doesn't cause state
 changes.
 
 
