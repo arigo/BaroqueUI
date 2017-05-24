@@ -44,7 +44,7 @@ namespace BaroqueUI
             return (bitmask_buttons & (1U << (int)btn)) != 0;
         }
 
-        public MonoBehaviour HoverTracker()
+        public MonoBehaviour CurrentHoverTracker()
         {
             return tracker_hover != null ? tracker_hover.tracker : null;
         }
@@ -136,16 +136,15 @@ namespace BaroqueUI
             return locals[index];
         }
 
-        public static void Register(MonoBehaviour tracker, float priority, bool concurrent = false)
+        public static ControllerTracker HoverTracker(MonoBehaviour tracker)
         {
-            BuildControllerTracker(tracker, (ctrl) => priority, concurrent);
+            return GetOrBuildTracker(tracker, true);
         }
 
-        public static void Register(MonoBehaviour tracker, GetPriorityDelegate get_priority = null, bool concurrent = false)
+        public static ControllerTracker GlobalTracker(MonoBehaviour tracker)
         {
-            BuildControllerTracker(tracker, get_priority, concurrent);
+            return GetOrBuildTracker(tracker, false);
         }
-
 
         public float DistanceToColliderCore(Collider[] colliders)
         {
@@ -183,10 +182,10 @@ namespace BaroqueUI
                  */
                 BoxCollider bc = (BoxCollider)coll;
                 Vector3 p_in = coll.transform.InverseTransformPoint(position) - bc.center;
-                float emin = Mathf.Min(bc.extent.x, bc.extent.y, bc.extent.z);
-                float ex = bc.extent.x - emin;
-                float ey = bc.extent.y - emin;
-                float ez = bc.extent.z - emin;
+                float emin = Mathf.Min(bc.size.x, bc.size.y, bc.size.z);
+                float ex = (bc.size.x - emin) * 0.5f;
+                float ey = (bc.size.y - emin) * 0.5f;
+                float ez = (bc.size.z - emin) * 0.5f;
                 if (p_in.x < -ex) p_in.x = -ex;
                 if (p_in.x >  ex) p_in.x =  ex;
                 if (p_in.y < -ey) p_in.y = -ey;
@@ -245,39 +244,39 @@ namespace BaroqueUI
         /***************************************************************************************/
 
 
-        static Dictionary<MonoBehaviour, ControllerTracker> all_trackers;
-        static List<ControllerTracker> global_trackers;
+        static Dictionary<MonoBehaviour, ControllerTracker> hover_trackers, global_trackers;
         static int auto_free_trackers;
 
-        static ControllerTracker BuildControllerTracker(MonoBehaviour tracker, GetPriorityDelegate get_priority, bool concurrent)
+        static ControllerTracker GetOrBuildTracker(MonoBehaviour tracker, bool is_hover)
         {
             Baroque.EnsureStarted();
-
-            ControllerTracker ct = new ControllerTracker(tracker);
-            ct.AutoRegister(get_priority, concurrent);
-            all_trackers[tracker] = ct;
-            if (ct.IsGlobal())
-                global_trackers.Add(ct);
+            ControllerTracker ct;
+            var these_trackers = is_hover ? hover_trackers : global_trackers;
+            if (!these_trackers.TryGetValue(tracker, out ct))
+            {
+                ct = new ControllerTracker(tracker, is_hover);
+                these_trackers[tracker] = ct;
+            }
 
             if (--auto_free_trackers <= 0)
             {
-                var new_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
-                var new_global_trackers = new List<ControllerTracker>();
-                foreach (var kv in all_trackers)
-                {
-                    if (kv.Key != null)    // meaning 'has not been freed'
-                    {
-                        new_trackers[kv.Key] = kv.Value;
-                        if (kv.Value.IsGlobal())
-                            new_global_trackers.Add(kv.Value);
-                    }
-                }
-                all_trackers = new_trackers;
-                global_trackers = new_global_trackers;
-                auto_free_trackers = all_trackers.Count / 2 + 16;
+                hover_trackers = RemoveDeadTrackers(hover_trackers);
+                global_trackers = RemoveDeadTrackers(global_trackers);
+                auto_free_trackers = (hover_trackers.Count + global_trackers.Count) / 2 + 16;
             }
 
             return ct;
+        }
+
+        static Dictionary<MonoBehaviour, ControllerTracker> RemoveDeadTrackers(Dictionary<MonoBehaviour, ControllerTracker> dict)
+        {
+            var new_dict = new Dictionary<MonoBehaviour, ControllerTracker>();
+            foreach (var kv in dict)
+            {
+                if (kv.Key != null)    // meaning 'has not been freed'
+                    new_dict[kv.Key] = kv.Value;
+            }
+            return new_dict;
         }
 
 
@@ -315,8 +314,8 @@ namespace BaroqueUI
 
         internal static void InitControllers()
         {
-            all_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
-            global_trackers = new List<ControllerTracker>();
+            hover_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
+            global_trackers = new Dictionary<MonoBehaviour, ControllerTracker>();
             auto_free_trackers = 16;
             called_controllers_update = new List<ControllerTracker>();
         }
@@ -429,17 +428,15 @@ namespace BaroqueUI
                     foreach (var tracker in tr.GetComponents<MonoBehaviour>())
                     {
                         ControllerTracker ct;
-                        if (!all_trackers.TryGetValue(tracker, out ct))
+                        if (!hover_trackers.TryGetValue(tracker, out ct))
                             continue;
 
-                        float priority = ct.get_priority(this);
+                        float priority = ct.getPriority(this);
                         if (priority == float.NegativeInfinity)
                             continue;
 
                         overlapping_trackers[ct] = priority;
-
-                        if (ct.IsHover())
-                            ct.PickIfBetter(priority, ref best, ref best_priority);
+                        ct.PickIfBetter(priority, ref best, ref best_priority);
                     }
                 }
 
@@ -462,7 +459,7 @@ namespace BaroqueUI
 
         void DeactivateTrigger()
         {
-            active_trigger.onTriggerUp(this);
+            active_trigger.Call(active_trigger.i_onTriggerUp, this);
             if (active_trigger == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Trigger);
             active_trigger = null;
@@ -470,7 +467,7 @@ namespace BaroqueUI
 
         void DeactivateGrip()
         {
-            active_grip.onGripUp(this);
+            active_grip.Call(active_grip.i_onGripUp, this);
             if (active_grip == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Grip);
             active_grip = null;
@@ -480,9 +477,13 @@ namespace BaroqueUI
         {
             if (active_touchpad_state == ATS_ACTION1)
             {
-                active_touchpad.onTouchpadUp(this);
-
+#warning "FIX ME"
+                /*active_touchpad.onTouchpadUp(this);
+                xxx;xxx;*/
             }
+
+            active_touchpad.Call(active_touchpad.i_onTouchPressUp, this);
+
 
             if (active_touchpad == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Touchpad);
@@ -500,7 +501,7 @@ namespace BaroqueUI
             Controller left_ctrl = controllers[0];
             Controller right_ctrl = controllers[1];
             ControllerTracker tracker = left_ctrl.tracker_hover_next;
-            if (tracker != null && tracker == right_ctrl.tracker_hover_next && !tracker.IsConcurrent())
+            if (tracker != null && tracker == right_ctrl.tracker_hover_next && !tracker.isConcurrent)
             {
                 /* conflict: both controllers are inside the zone corresponding to
                  * the same, non-Concurrent, ControllerTracker */
@@ -566,31 +567,32 @@ namespace BaroqueUI
             foreach (var ct in cts)
             {
                 Controller[] ctrls = Array.FindAll(controllers, (ctrl) => ctrl.overlapping_trackers.ContainsKey(ct));
-                ct.onControllersUpdate(ctrls);
+                ct.Call(ct.i_onControllersUpdate, ctrls);
             }
             foreach (var ct in called_controllers_update)
             {
                 if (!left_cts.ContainsKey(ct) && !right_cts.ContainsKey(ct))
-                    ct.onControllersUpdate(new Controller[0]);
+                    ct.Call(ct.i_onControllersUpdate, new Controller[0]);
             }
             called_controllers_update = cts;
 
             Controller[] active_controllers = Array.FindAll(controllers, (ctrl) => ctrl.is_tracking_active);
-            foreach (var gt in global_trackers)
-                gt.onControllersUpdate(active_controllers);
+            foreach (var gt in global_trackers.Values)
+                gt.Call(gt.i_onControllersUpdate, active_controllers);
         }
 
         void CallControllerMove()
         {
             if (active_trigger != null)
-                active_trigger.onTriggerDrag(this);
+                active_trigger.Call(active_trigger.i_onTriggerDrag, this);
             if (active_grip != null)
-                active_grip.onGripDrag(this);
+                active_grip.Call(active_grip.i_onGripDrag, this);
             if (active_touchpad != null)
-                active_touchpad.onTouchpadDrag(this);
+#warning "FIX ME"
+                active_touchpad.Call(active_touchpad.i_onTouchPressDrag, this);
 
             if (tracker_hover != null && ((tracker_hover_lock & ~MANUAL_LOCK) == 0))
-                tracker_hover.onMoveOver(this);
+                tracker_hover.Call(tracker_hover.i_onMoveOver, this);
         }
 
         void LeaveNow()
@@ -598,7 +600,7 @@ namespace BaroqueUI
             ControllerTracker prev = tracker_hover;
             tracker_hover = null;
             tracker_hover_lock = 0;
-            prev.onLeave(this);
+            prev.Call(prev.i_onLeave, this);
             SetPointer("");
         }
 
@@ -616,7 +618,7 @@ namespace BaroqueUI
             if (tracker_hover == null)
             {
                 tracker_hover = tracker_hover_next;
-                tracker_hover.onEnter(this);
+                tracker_hover.Call(tracker_hover.i_onEnter, this);
             }
             Debug.Assert(tracker_hover == tracker_hover_next);
         }
@@ -639,38 +641,23 @@ namespace BaroqueUI
             }
             else
             {
-                /* no, pick the best-priority one among the trackers we touch which
-                 * do NOT implement hovering */
+                /* no, look for global trackers */
                 float best_priority = float.NegativeInfinity;
 
-                foreach (var kv in overlapping_trackers)
+                foreach (var ct in global_trackers.Values)
                 {
-                    ControllerTracker ct = kv.Key;
-                    float priority = kv.Value;
-
-                    if (!ct.IsHover() && (ct.event_sets & event_set) != 0)
-                        ct.PickIfBetter(priority, ref best, ref best_priority);
-                }
-
-                /* if not found, then look for global trackers */
-                if (best == null)
-                {
-                    foreach (var ct in global_trackers)
+                    if ((ct.event_sets & event_set) != 0 && ct.NotDead())
                     {
-                        if ((ct.event_sets & event_set) != 0)
-                            if (ct.tracker && ct.tracker.isActiveAndEnabled)
-                            {
-                                float priority = ct.get_priority(this);
-                                if (priority != float.NegativeInfinity)
-                                    ct.PickIfBetter(priority, ref best, ref best_priority);
-                            }
+                        float priority = ct.getPriority(this);
+                        if (priority != float.NegativeInfinity)
+                            ct.PickIfBetter(priority, ref best, ref best_priority);
                     }
-                    if (best == null)
-                        return;       /* still not found, ignore the button click */
                 }
+                if (best == null)
+                    return;       /* still not found, ignore the button click */
 
                 /* If it's a non-concurrent tracker and it is used by the other controller, cancel */
-                if (!best.IsConcurrent())
+                if (!best.isConcurrent)
                 {
                     foreach (var ctrl in Baroque.GetControllers())
                         if (ctrl != this && ctrl.ActiveWith(best))
@@ -685,13 +672,15 @@ namespace BaroqueUI
             if (best == tracker_hover && btn != EControllerButton.Menu)
                 tracker_hover_lock |= 1U << (int)btn;
 
+            ControllerEvent ev = null;
             switch (btn)
             {
-                case EControllerButton.Trigger:  best.onTriggerDown(this);  break;
-                case EControllerButton.Grip:     best.onGripDown(this);     break;
-                case EControllerButton.Touchpad: best.onTouchpadDown(this); break;
-                case EControllerButton.Menu:     best.onMenuClick(this);    break;
+                case EControllerButton.Trigger:  ev = best.i_onTriggerDown;    break;
+                case EControllerButton.Grip:     ev = best.i_onGripDown;       break;
+                case EControllerButton.Touchpad: ev = best.i_onTouchPressDown; break;
+                case EControllerButton.Menu:     ev = best.i_onMenuClick;      break;
             }
+            best.Call(ev, this);
         }
 
         void CallButtonDown()

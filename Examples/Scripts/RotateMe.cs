@@ -10,7 +10,8 @@ public class RotateMe : MonoBehaviour
 
     private void Start()
     {
-        Controller.Register(this);
+        var ct = Controller.HoverTracker(this);
+        ct.onTriggerDown += OnTriggerDown;
     }
 
     void OnTriggerDown(Controller controller)

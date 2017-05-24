@@ -18,23 +18,28 @@ namespace BaroqueUI
 
         private void Start()
         {
-            Controller.Register(this);
+            var ct = Controller.HoverTracker(this);
+            ct.onEnter += OnEnter;
+            ct.onLeave += OnLeave;
+            ct.onTriggerDown += OnTriggerDown;
+            ct.onTriggerDrag += OnTriggerDrag;
+            ct.onTriggerUp += OnTriggerUp;
         }
 
-        public void OnEnter(Controller controller)
+        public virtual void OnEnter(Controller controller)
         {
             /* OnEnter: we are entering the grabbed object's volume.  Change to highlightColor. */
             ChangeColor(highlightColor);
         }
 
-        public void OnLeave(Controller controller)
+        public virtual void OnLeave(Controller controller)
         {
             /* OnLeave: we are leaving the grabbed object's volume.  Change to Color.clear,
              * which restores the original materials. */
             ChangeColor(Color.clear);
         }
 
-        public void OnTriggerDown(Controller controller)
+        public virtual void OnTriggerDown(Controller controller)
         {
             /* Called when the trigger button is pressed. */
             origin_rotation = Quaternion.Inverse(controller.rotation) * transform.rotation;
@@ -54,14 +59,14 @@ namespace BaroqueUI
             }
         }
 
-        public void OnTriggerDrag(Controller controller)
+        public virtual void OnTriggerDrag(Controller controller)
         {
             /* Dragging... */
             transform.rotation = controller.rotation * origin_rotation;
             transform.position = controller.position + transform.rotation * origin_position;
         }
 
-        public void OnTriggerUp(Controller controller)
+        public virtual void OnTriggerUp(Controller controller)
         {
             /* OnTriggerUp: we revert the color back to highlightColor.  Note that the order of the events
              * is well-defined: a OnEnter is always sent before OnTriggerDown, which is always sent

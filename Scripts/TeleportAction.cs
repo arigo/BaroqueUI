@@ -51,15 +51,19 @@ namespace BaroqueUI
             destination_reticle = Instantiate<Transform>(destinationReticlePrefab);
             destination_reticle.gameObject.SetActive(false);
 
-            Controller.Register(this);
+            var gt = Controller.GlobalTracker(this);
+            gt.SetDefaultPriority(-10);
+            gt.onTouchPressDown += OnTouchPressDown;
+            gt.onTouchPressDrag += OnTouchPressDrag;
+            gt.onTouchPressUp += OnTouchPressUp;
         }
 
-        void OnTouchpadDown(Controller controller)
+        void OnTouchPressDown(Controller controller)
         {
             arc.Show();
         }
 
-        void OnTouchpadDrag(Controller controller)
+        void OnTouchPressDrag(Controller controller)
         {
             bool saved = Physics.queriesHitTriggers;
             try
@@ -110,7 +114,7 @@ namespace BaroqueUI
             }
         }
 
-        void OnTouchpadUp(Controller controller)
+        void OnTouchPressUp(Controller controller)
         {
             arc.Hide();
             invalid_reticle.gameObject.SetActive(false);

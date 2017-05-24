@@ -311,7 +311,13 @@ namespace BaroqueUI
 
             StartAutomaticKeyboard();
 
-            Controller.Register(this, GetPriority);
+            var ct = Controller.HoverTracker(this);
+            ct.getPriority = GetPriority;
+            ct.onEnter += OnEnter;
+            ct.onLeave += OnLeave;
+            ct.onTriggerDown += (ctrl) => MouseDown(ctrl.position);
+            ct.onTriggerDrag += (ctrl) => MouseMove(ctrl);
+            ct.onTriggerUp += (ctrl) => { MouseUp(ctrl.position); touchpad_mode = 0; };
         }
 
         GameObject SetInitialSelection()
@@ -392,6 +398,7 @@ namespace BaroqueUI
             original_touchpad_pos = controller.touchpadPosition;
         }
 
+#if false
         void OnTouchpadTouching(Controller controller)
         {
             if (!controller.touchpad.touched)
@@ -403,7 +410,6 @@ namespace BaroqueUI
 
 
 
-#if false
             /* the controller is supposed to be grabbed when touchpad_mode is 1, 2 or 3. */
             if (touchpad_mode > 0 && controller.GrabbedControllerTracker() != this)
             {
@@ -537,9 +543,9 @@ namespace BaroqueUI
                         return;   /* don't change the pointer */
                 }
             }
-#endif
             UpdateCursor(controller);
         }
+#endif
 
         void UpdateCursor(Controller controller)
         {
@@ -615,11 +621,6 @@ namespace BaroqueUI
             pevent = null;
         }
 
-        void OnTriggerDown(Controller controller)
-        {
-            MouseDown(controller.position);
-        }
-
         void MouseDown(Vector3 controller_position)
         {
             if (UpdateCurrentPoint(controller_position))
@@ -645,11 +646,6 @@ namespace BaroqueUI
             }
         }
 
-        void OnTriggerDrag(Controller controller)
-        {
-            MouseMove(controller);
-        }
-
         void MouseMove(Controller controller)
         {
             if (UpdateCurrentPoint(controller.position, allow_out_of_bounds: true))
@@ -658,12 +654,6 @@ namespace BaroqueUI
                     ExecuteEvents.Execute(pevent.pointerDrag, pevent, ExecuteEvents.dragHandler);
             }
             UpdateCursor(controller);
-        }
-
-        void OnTriggerUp(Controller controller)
-        {
-            MouseUp(controller.position);
-            touchpad_mode = 0;
         }
 
         void MouseUp(Vector3 controller_position)
@@ -713,7 +703,7 @@ namespace BaroqueUI
                 int i = 0;
                 foreach (var ctrl in Baroque.GetControllers())
                 {
-                    if (ctrl.HoverControllerTracker() == this)
+                    if (ctrl.CurrentHoverTracker() == this)
                         popupCloseTriggerOutside &= ~(0x0100 << i);   /* remove bit 8/9: we are inside */
 
                     if (ctrl.GetButton(EControllerButton.Trigger))
@@ -721,7 +711,7 @@ namespace BaroqueUI
                         if ((popupCloseTriggerOutside & (0x01 << i)) != 0)    /* was up, pressing just now */
                         {
                             popupCloseTriggerOutside &= ~(0x01 << i);         /* remove bit 0/1: we are down */
-                            if (ctrl.HoverControllerTracker() != this)
+                            if (ctrl.CurrentHoverTracker() != this)
                                 popupCloseTriggerOutside |= (0x0100 << i);    /* set bit 8/9 if we are outside */
                         }
                     }

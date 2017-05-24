@@ -90,7 +90,7 @@ namespace BaroqueUI
                 drawings = new GameObject("BaroqueUI drawings");
 
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            Collider.Destroy(go.GetComponent<Collider>());
+            Collider.DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(drawings.transform);
             go.transform.position = (from + to) * 0.5f;
             go.transform.localScale = new Vector3(0.005f, 0.005f, Vector3.Distance(from, to));

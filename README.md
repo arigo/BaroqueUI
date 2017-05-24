@@ -110,7 +110,7 @@ Check whether individual buttons are pressed or not.
 Check whether the finger is touching the touchpad and where (X and Y
 coordinates between -1 and 1).
 
-        public MonoBehaviour HoverTracker();
+        public MonoBehaviour CurrentHoverTracker();
 
 Return which "tracker" (see below) the controller is currently over.
 
