@@ -166,63 +166,70 @@ does it for you.  It returns the ``index``th item of the array,
 instantiating it if it is still null.
 
 
-Controller trackers
--------------------
+Controller Hover trackers
+-------------------------
 
 For every object in the scene that you want to interact with, you need a
 script that is registered with the controllers.  We call the script a
 "tracker".  Typically, registration is done in ``Start()`` after setting
 up the MonoBehaviour:
 
-        Controller.Register(this);
+        var ct = Controller.HoverTracker(this);
+		ct.onEnter += ...;
+		ct.onLeave += ...;
+		ct.onTriggerDown += ...;
 
-With the exception of "global trackers" (see below), you also need to make
-sure the GameObject or its children contain at least one collider, typically
-of the "trigger" kind.  This is used to know the maximal interaction area.
+You also need to make sure the GameObject or its children contain at least
+one collider, typically of the "trigger" kind.  This is used to know the
+maximal interaction area.
 
-The signature of the Register() static method is:
+The fields of the 'ct' object are mostly C# events, which you set with 
+``+=``.  We will discuss them in the following sections.  A few non-event
+fields first:
 
-        static void Register(MonoBehaviour tracker,
-                             float priority,
-							 bool concurrent = false);
-
-		delegate float GetPriorityDelegate(Controller controller);
-		static void Register(MonoBehaviour tracker,
-                             GetPriorityDelegate priority = ...,
-							 bool concurrent = false);
+		ct.computePriority = ...;
+		ct.SetPriority(float value)
+		ct.SetPriorityFromDistance(float maximum);
 
 The "priority" is used to pick trackers in case there are overlapping
 colliders.  The highest "priority" value is choosen first.  The priority
-is given either as a plain float, or as a delegate: the latter is used to
-vary the priority based on the exact controller position.  If not specified,
-the priority is computed as follows: it is a negative number equal to minus
-the distance between the controller and a "core point" (usually the center
-of the collider, but for capsule colliders it is the closest point on the
-segment between the center of the two end spheres).
+can be computed by assigning a delegate to ``computePriority``, taking a
+controller argument and returning a float.  Or, use ``SetPriority()`` to
+give the tracker a constant priority; or ``SetPriorityFromDistance()`` to
+have it compute the priority dynamically from the distance to the collider.
+In the last case, the priority returned is equal to ``maximum`` minus the
+distance.  The default computation method is ``SetPriorityFromDistance(0)``,
+which returns a (usually small) negative number.
+
+Note that the distance is computed to a point in the "core" of the collider,
+not the surface.  For cubic BoxColliders, for example, it is the center.
+See the details in ``Collider.DistanceToColliderCore()``.
 
 If the returned priority is ``float.NegativeInfinity``, then the controller
 is considered completely outside the tracker.
 
-If the tracker is registered with ``concurrent: false`` (the default),
-then BaroqueUI takes care for you that only one controller can be
-interacting with the given tracker, not both at the same time.  It
-simplifies the logic you need and avoids bugs due to a rarely-tested use
-case.  If you say ``concurrent: true``, then you must handle the case
-that events might be called for both controllers concurrently.
+		ct.isConcurrent
 
-There are three kinds of trackers:
+When this is ``false`` (the default), then BaroqueUI takes care for you
+that only one controller can be interacting with the given tracker, not
+both at the same time.  It simplifies the logic you need and avoids bugs
+due to a rarely-tested use case.  If you say ``ct.isConcurrent = true``,
+then you must handle the case that events might be called for both 
+controllers concurrently.
 
-* Hover trackers, which have colliders and an ``OnEnter``, ``OnMoveOver``
-  and/or ``OnLeave`` method.  At any point in time, each controller is
-  "inside" zero or one hover tracker.
 
-* Non-hover local trackers: they have colliders but only other event
-  methods, like ``OnTriggerDown``.  They are never the controller's hover
-  tracker, but the event methods are called anyway if the current hover
-  tracker doesn't implement the same methods.
+Global trackers
+---------------
 
-* Global trackers: same as non-hover local trackers, but without colliders.
-  These trackers are always at a lower priority than the local trackers.
+In addition to "Hover trackers" described above, you can also register
+global trackers.  These receive events not otherwise handled.  These
+trackers are always tried after the hover trackers.  They can also have
+priorities to differenciate among them.  These global trackers should be
+installed on GameObjects with no colliders, and the default priority is simply 0.
+
+They are installed with:
+
+        var gt = Controller.GlobalTracker(this);
 
 
 Event sets

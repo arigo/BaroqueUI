@@ -312,7 +312,7 @@ namespace BaroqueUI
             StartAutomaticKeyboard();
 
             var ct = Controller.HoverTracker(this);
-            ct.getPriority = GetPriority;
+            ct.computePriority = GetPriority;
             ct.onEnter += OnEnter;
             ct.onLeave += OnLeave;
             ct.onTriggerDown += (ctrl) => MouseDown(ctrl.position);

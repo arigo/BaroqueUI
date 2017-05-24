@@ -52,7 +52,7 @@ namespace BaroqueUI
             destination_reticle.gameObject.SetActive(false);
 
             var gt = Controller.GlobalTracker(this);
-            gt.SetDefaultPriority(-10);
+            gt.SetPriority(-10);
             gt.onTouchPressDown += OnTouchPressDown;
             gt.onTouchPressDrag += OnTouchPressDrag;
             gt.onTouchPressUp += OnTouchPressUp;

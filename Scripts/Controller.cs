@@ -431,7 +431,7 @@ namespace BaroqueUI
                         if (!hover_trackers.TryGetValue(tracker, out ct))
                             continue;
 
-                        float priority = ct.getPriority(this);
+                        float priority = ct.computePriority(this);
                         if (priority == float.NegativeInfinity)
                             continue;
 
@@ -648,7 +648,7 @@ namespace BaroqueUI
                 {
                     if ((ct.event_sets & event_set) != 0 && ct.NotDead())
                     {
-                        float priority = ct.getPriority(this);
+                        float priority = ct.computePriority(this);
                         if (priority != float.NegativeInfinity)
                             ct.PickIfBetter(priority, ref best, ref best_priority);
                     }

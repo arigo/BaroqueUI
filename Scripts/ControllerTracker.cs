@@ -35,16 +35,28 @@ namespace BaroqueUI
         {
             this.tracker = tracker;
             creation_order = ++NUMBERING;
-            event_sets = is_hover ? EEventSet.Hover : 0;
-            SetDefaultPriority(0);
+            if (is_hover)
+            {
+                event_sets = EEventSet.Hover;
+                SetPriorityFromDistance(0);
+            }
+            else
+            {
+                event_sets = 0;
+                SetPriority(0);
+            }
         }
 
-        public GetPriorityDelegate getPriority { get; set; }
+        public GetPriorityDelegate computePriority { get; set; }
 
-        public void SetDefaultPriority(float maximum)
+        public void SetPriority(float value)
+        {
+            computePriority = (ctrl) => value;
+        }
+        public void SetPriorityFromDistance(float maximum)
         {
             var colliders = tracker.GetComponentsInChildren<Collider>();
-            getPriority = (ctrl) => maximum - ctrl.DistanceToColliderCore(colliders);
+            computePriority = (ctrl) => maximum - ctrl.DistanceToColliderCore(colliders);
         }
 
         public bool isHover {
