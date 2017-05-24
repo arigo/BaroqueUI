@@ -9,6 +9,7 @@ namespace BaroqueUI
     public delegate float GetPriorityDelegate(Controller controller);
     public delegate void ControllerEvent(Controller controller);
     public delegate void ControllersUpdateEvent(Controller[] controllers);
+    public delegate void ControllerVec2Event(Controller controller, Vector2 relative_pos);
 
     internal enum EEventSet
     {
@@ -17,8 +18,11 @@ namespace BaroqueUI
         Grip = 0x04,
         Menu = 0x08,
         Touchpad = 0x10,
-        IsConcurrent = 0x20,
-        IsGlobal = 0x40,
+        TouchpadAction1 = 0x20,  /* OnTouchPressDown, ... */
+        TouchpadAction2 = 0x40,  /* OnTouchScroll         */
+        TouchpadAction3 = 0x80,  /* OnTouchDown, ...      */
+        IsConcurrent = 0x100,
+        IsGlobal = 0x200,
     }
 
     internal class ControllerTracker
@@ -39,10 +43,13 @@ namespace BaroqueUI
         public ControllerEvent onGripDrag;
         public ControllerEvent onGripUp;
         public ControllerEvent onMenuClick;
-        public ControllerEvent onTouchpadDown;
-        public ControllerEvent onTouchpadDrag;
-        public ControllerEvent onTouchpadUp;
-        public ControllerEvent onTouchpadTouching;
+        public ControllerEvent onTouchPressDown;
+        public ControllerEvent onTouchPressDrag;
+        public ControllerEvent onTouchPressUp;
+        public ControllerVec2Event onTouchScroll;
+        public ControllerEvent onTouchDown;
+        public ControllerEvent onTouchDrag;
+        public ControllerEvent onTouchUp;
 
         static int NUMBERING = 0;
 
@@ -75,10 +82,15 @@ namespace BaroqueUI
 
             onMenuClick = FindMethod(EEventSet.Menu, "OnMenuClick");
 
-            onTouchpadDown     = FindMethod(EEventSet.Touchpad, "OnTouchpadDown");
-            onTouchpadDrag     = FindMethod(EEventSet.Touchpad, "OnTouchpadDrag");
-            onTouchpadUp       = FindMethod(EEventSet.Touchpad, "OnTouchpadUp");
-            onTouchpadTouching = FindMethod(EEventSet.Touchpad, "OnTouchpadTouching");
+            onTouchPressDown = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction1, "OnTouchPressDown");
+            onTouchPressDrag = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction1, "OnTouchPressDrag");
+            onTouchPressUp   = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction1, "OnTouchPressUp");
+
+            onTouchScroll = FindMethodVec2(EEventSet.Touchpad | EEventSet.TouchpadAction2, "OnTouchScroll");
+
+            onTouchDown = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction3, "OnTouchDown");
+            onTouchDrag = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction3, "OnTouchDrag");
+            onTouchUp   = FindMethod(EEventSet.Touchpad | EEventSet.TouchpadAction3, "OnTouchUp");
 
             if (!IsHover() && tracker.GetComponentInChildren<Collider>() == null)
                 event_sets |= EEventSet.IsGlobal;
@@ -143,6 +155,15 @@ namespace BaroqueUI
                 return (ctrls) => { };
             else
                 return (ctrls) => { Run(minfo, new object[] { ctrls }); };
+        }
+
+        ControllerVec2Event FindMethodVec2(EEventSet event_set, string method_name)
+        {
+            MethodInfo minfo = FindMethodInfo(event_set, method_name);
+            if (minfo == null)
+                return (ctrl, pos) => { };
+            else
+                return (ctrl, pos) => { Run(minfo, new object[] { ctrl, pos }); };
         }
 
         void Run(MethodInfo minfo, object[] args)

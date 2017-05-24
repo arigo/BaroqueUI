@@ -44,7 +44,7 @@ namespace BaroqueUI
             return (bitmask_buttons & (1U << (int)btn)) != 0;
         }
 
-        public MonoBehaviour HoverControllerTracker()
+        public MonoBehaviour HoverTracker()
         {
             return tracker_hover != null ? tracker_hover.tracker : null;
         }
@@ -285,7 +285,6 @@ namespace BaroqueUI
 
 
         static readonly Vector3 POS_TO_CURSOR = new Vector3(0, -0.006f, 0.056f);
-        const uint TOUCHPAD_TOUCHED = 0x10000;
         const uint MANUAL_LOCK = 0x4000;
 
         VRControllerState_t controllerState;
@@ -301,6 +300,12 @@ namespace BaroqueUI
         ControllerTracker tracker_hover_next;
         float tracker_hover_next_priority;
         bool is_tracking_active;
+
+        const float ATS_NONE = 0;
+        const float ATS_ACTION1 = -1;
+        const float ATS_ACTION2 = -2;
+        const float ATS_ACTION3 = -3;
+        float active_touchpad_state;   /* if > 0, the timeout for the small delay */
 
         SteamVR_TrackedObject trackedObject;
         bool scrollWheelVisible;
@@ -358,7 +363,6 @@ namespace BaroqueUI
 
                 ulong trigger = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Trigger));
                 ulong pad = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
-                ulong pad_touch = controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong grip = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_Grip));
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
 
@@ -366,7 +370,6 @@ namespace BaroqueUI
                 if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
                 if (grip != 0) { b |= (1U << (int)EControllerButton.Grip); }
                 if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
-                if (pad_touch != 0) b |= TOUCHPAD_TOUCHED;
                 if (trigger != 0) { b |= (1U << (int)EControllerButton.Trigger); }
                 bitmask_buttons = b;
                 bitmask_buttons_down = bitmask_buttons & ~prev_bitmask_buttons;
@@ -390,7 +393,8 @@ namespace BaroqueUI
                 DeactivateTrigger();
             if (active_grip != null && !gripPressed)
                 DeactivateGrip();
-            if (active_touchpad != null && !touchpadPressed)
+            if (active_touchpad != null &&
+                    (!touchpadTouched || (active_touchpad_state == ATS_ACTION1 && !touchpadPressed)))
                 DeactivateTouchpad();
 
             if (is_tracking_active)
@@ -474,7 +478,12 @@ namespace BaroqueUI
 
         void DeactivateTouchpad()
         {
-            active_touchpad.onTouchpadUp(this);
+            if (active_touchpad_state == ATS_ACTION1)
+            {
+                active_touchpad.onTouchpadUp(this);
+
+            }
+
             if (active_touchpad == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Touchpad);
             active_touchpad = null;
@@ -482,7 +491,7 @@ namespace BaroqueUI
 
         bool IsClickingNow()
         {
-            return (bitmask_buttons_down & ~TOUCHPAD_TOUCHED) != 0;
+            return bitmask_buttons_down != 0;
         }
 
         static void ResolveControllerConflicts(Controller[] controllers)
@@ -512,7 +521,7 @@ namespace BaroqueUI
                     forced_out = left_ctrl;
                 else if (right_ctrl.tracker_hover_next_priority < left_ctrl.tracker_hover_next_priority)
                     forced_out = right_ctrl;
-                else if ((left_ctrl.bitmask_buttons & TOUCHPAD_TOUCHED) != 0)
+                else if (left_ctrl.touchpadTouched)
                     forced_out = right_ctrl;
                 else
                     forced_out = left_ctrl;

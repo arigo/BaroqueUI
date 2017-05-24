@@ -107,12 +107,12 @@ Check whether individual buttons are pressed or not.
         public bool touchpadTouched;
         public Vector2 touchpadPosition;
 
-Check whether the finger is touching the touchpad and where.
+Check whether the finger is touching the touchpad and where (X and Y
+coordinates between -1 and 1).
 
-        public MonoBehaviour HoverControllerTracker();
+        public MonoBehaviour HoverTracker();
 
-Return which "controller tracker" (see below) the controller
-is currently over.
+Return which "tracker" (see below) the controller is currently over.
 
         public void GrabHover(bool active);
 
@@ -352,7 +352,7 @@ actually start touching it just now and have no other state for it.
 The "small delay" state selects between the three action states.  There
 is no delay if only one action state is actually implemented in the
 tracker.  The "default" path is followed if the small delay elapses, if
-we move the controller enough in space, or if press and there is no
+we move the controller enough in space, or if we "press" and there is no
 "action 1" implemented; or if we untouch the touchpad quickly (in the
 last case, it will leave "action 3" immediately afterwards, but that's
 still registered as a tap).
