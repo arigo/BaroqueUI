@@ -16,7 +16,6 @@ namespace BaroqueUI
         Trigger = 0x02,
         Grip = 0x04,
         Menu = 0x08,
-        Touchpad = 0x10,
         TouchpadAction1 = 0x20,  /* OnTouchPressDown, ... */
         TouchpadAction2 = 0x40,  /* OnTouchScroll         */
         TouchpadAction3 = 0x80,  /* OnTouchDown, ...      */
@@ -160,49 +159,53 @@ namespace BaroqueUI
 
         public event ControllerEvent onTouchPressDown
         {
-            add { i_onTouchPressDown += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressDown -= value; check_Touchpad(); }
+            add { i_onTouchPressDown += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { i_onTouchPressDown -= value; check_Touchpad1(); }
         }
         public event ControllerEvent onTouchPressDrag
         {
-            add { i_onTouchPressDrag += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressDrag -= value; check_Touchpad(); }
+            add { i_onTouchPressDrag += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { i_onTouchPressDrag -= value; check_Touchpad1(); }
         }
         public event ControllerEvent onTouchPressUp
         {
-            add { i_onTouchPressUp += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressUp -= value; check_Touchpad(); }
+            add { i_onTouchPressUp += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { i_onTouchPressUp -= value; check_Touchpad1(); }
         }
         public event ControllerVec2Event onTouchScroll
         {
-            add { i_onTouchScroll += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction2; }
-            remove { i_onTouchScroll -= value; check_Touchpad(); }
+            add { i_onTouchScroll += value; event_sets |= EEventSet.TouchpadAction2; }
+            remove { i_onTouchScroll -= value; check_Touchpad2(); }
         }
         public event ControllerEvent onTouchDown
         {
-            add { i_onTouchDown += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction3; }
-            remove { i_onTouchDown -= value; check_Touchpad(); }
+            add { i_onTouchDown += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { i_onTouchDown -= value; check_Touchpad3(); }
         }
         public event ControllerEvent onTouchDrag
         {
-            add { i_onTouchDrag += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction3; }
-            remove { i_onTouchDrag -= value; check_Touchpad(); }
+            add { i_onTouchDrag += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { i_onTouchDrag -= value; check_Touchpad3(); }
         }
         public event ControllerEvent onTouchUp
         {
-            add { i_onTouchUp += value; event_sets |= EEventSet.Touchpad | EEventSet.TouchpadAction3; }
-            remove { i_onTouchUp -= value; check_Touchpad(); }
+            add { i_onTouchUp += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { i_onTouchUp -= value; check_Touchpad3(); }
         }
-        void check_Touchpad()
+        void check_Touchpad1()
         {
             if (i_onTouchPressDown == null && i_onTouchPressDrag == null && i_onTouchPressUp == null)
                 event_sets &= ~EEventSet.TouchpadAction1;
+        }
+        void check_Touchpad2()
+        {
             if (i_onTouchScroll == null)
                 event_sets &= ~EEventSet.TouchpadAction2;
+        }
+        void check_Touchpad3()
+        {
             if (i_onTouchDown == null && i_onTouchDrag == null && i_onTouchUp == null)
                 event_sets &= ~EEventSet.TouchpadAction3;
-            if ((event_sets & (EEventSet.TouchpadAction1 | EEventSet.TouchpadAction2 | EEventSet.TouchpadAction3)) == 0)
-                event_sets &= ~EEventSet.Touchpad;
         }
 
         public void PickIfBetter(float priority, ref ControllerTracker current_best, ref float current_best_priority)

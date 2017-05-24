@@ -13,7 +13,7 @@ namespace BaroqueUI
 {
     public enum EControllerButton
     {
-        Trigger, Touchpad, Grip, Menu
+        Trigger, Touchpad, Grip, Menu, TouchpadTouched
     }
 
 
@@ -36,7 +36,7 @@ namespace BaroqueUI
         public bool gripPressed { get { return GetButton(EControllerButton.Grip); } }
         public bool menuPressed { get { return GetButton(EControllerButton.Menu); } }
 
-        public bool touchpadTouched { get { return (controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad))) != 0; } }
+        public bool touchpadTouched { get { return GetButton(EControllerButton.TouchpadTouched); } }
         public Vector2 touchpadPosition { get { return new Vector2(controllerState.rAxis0.x, controllerState.rAxis0.y); } }
 
         public bool GetButton(EControllerButton btn)
@@ -304,7 +304,11 @@ namespace BaroqueUI
         const float ATS_ACTION1 = -1;
         const float ATS_ACTION2 = -2;
         const float ATS_ACTION3 = -3;
-        float active_touchpad_state;   /* if > 0, the timeout for the small delay */
+        float active_touchpad_state;   /* if > 0, the timeout for the small delay.
+                                          Invariant: active_touchpad_state == ATS_NONE
+                                          if and only if active_touchpad == null */
+        Vector2 touch_original_pos2;
+        Vector3 touch_original_pos3;
 
         SteamVR_TrackedObject trackedObject;
         bool scrollWheelVisible;
@@ -362,16 +366,19 @@ namespace BaroqueUI
 
                 ulong trigger = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Trigger));
                 ulong pad = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
+                ulong padtouch = controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong grip = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_Grip));
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
 
                 uint b = 0;
                 if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
-                if (grip != 0) { b |= (1U << (int)EControllerButton.Grip); }
+                if (grip != 0) b |= (1U << (int)EControllerButton.Grip);
                 if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
-                if (trigger != 0) { b |= (1U << (int)EControllerButton.Trigger); }
+                if (trigger != 0) b |= (1U << (int)EControllerButton.Trigger);
+                if (padtouch != 0) b |= (1U << (int)EControllerButton.TouchpadTouched);
                 bitmask_buttons = b;
                 bitmask_buttons_down = bitmask_buttons & ~prev_bitmask_buttons;
+
 
                 /* ignore trigger click when grip is down and vice-versa */
                 if (grip != 0)
@@ -473,17 +480,38 @@ namespace BaroqueUI
             active_grip = null;
         }
 
+        void StopTouchpadAction()
+        {
+            switch (active_touchpad_state)
+            {
+                case ATS_ACTION1:
+                    /* stop pressing the touchpad */
+                    active_touchpad.Call(active_touchpad.i_onTouchPressUp, this);
+                    break;
+
+                case ATS_ACTION2:
+                    /* stop scrolling (no event sent, for now) */
+                    break;
+
+                case ATS_ACTION3:
+                    /* stop touching the touchpad */
+                    active_touchpad.Call(active_touchpad.i_onTouchUp, this);
+                    break;
+            }
+            active_touchpad_state = ATS_NONE;
+            touch_original_pos2 = touchpadPosition;
+            touch_original_pos3 = position;
+        }
+
         void DeactivateTouchpad()
         {
-            if (active_touchpad_state == ATS_ACTION1)
+            if (active_touchpad_state > 0)
             {
-#warning "FIX ME"
-                /*active_touchpad.onTouchpadUp(this);
-                xxx;xxx;*/
+                /* we are in the "small delay" state.  Send the touchpad-touch event now */
+                active_touchpad.Call(active_touchpad.i_onTouchDown, this);
+                active_touchpad_state = ATS_ACTION3;
             }
-
-            active_touchpad.Call(active_touchpad.i_onTouchPressUp, this);
-
+            StopTouchpadAction();
 
             if (active_touchpad == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Touchpad);
@@ -492,7 +520,7 @@ namespace BaroqueUI
 
         bool IsClickingNow()
         {
-            return bitmask_buttons_down != 0;
+            return (bitmask_buttons_down & ~(1U << (int)EControllerButton.TouchpadTouched)) != 0;
         }
 
         static void ResolveControllerConflicts(Controller[] controllers)
@@ -569,6 +597,7 @@ namespace BaroqueUI
                 Controller[] ctrls = Array.FindAll(controllers, (ctrl) => ctrl.overlapping_trackers.ContainsKey(ct));
                 ct.Call(ct.i_onControllersUpdate, ctrls);
             }
+            overlapping_trackers.Clear();
             foreach (var ct in called_controllers_update)
             {
                 if (!left_cts.ContainsKey(ct) && !right_cts.ContainsKey(ct))
@@ -585,11 +614,30 @@ namespace BaroqueUI
         {
             if (active_trigger != null)
                 active_trigger.Call(active_trigger.i_onTriggerDrag, this);
+
             if (active_grip != null)
                 active_grip.Call(active_grip.i_onGripDrag, this);
+
             if (active_touchpad != null)
-#warning "FIX ME"
-                active_touchpad.Call(active_touchpad.i_onTouchPressDrag, this);
+            {
+                switch (active_touchpad_state)
+                {
+                    case ATS_ACTION1:
+                        active_touchpad.Call(active_touchpad.i_onTouchPressDrag, this);
+                        break;
+
+                    case ATS_ACTION2:
+                        Vector2 p = touchpadPosition;
+                        Vector2 d = p - touch_original_pos2;
+                        touch_original_pos2 = p;
+                        active_touchpad.Call(active_touchpad.i_onTouchScroll, this, d);
+                        break;
+
+                    case ATS_ACTION3:
+                        active_touchpad.Call(active_touchpad.i_onTouchDrag, this);
+                        break;
+                }
+            }
 
             if (tracker_hover != null && ((tracker_hover_lock & ~MANUAL_LOCK) == 0))
                 tracker_hover.Call(tracker_hover.i_onMoveOver, this);
@@ -628,20 +676,18 @@ namespace BaroqueUI
             return (ct == tracker_hover || ct == active_trigger || ct == active_grip || ct == active_touchpad);
         }
 
-        void HandleButtonDown(EControllerButton btn, EEventSet event_set, ref ControllerTracker active_tracker)
+        ControllerTracker FindHandler(EEventSet event_set)
         {
-            if ((bitmask_buttons_down & (1U << (int)btn)) == 0)
-                return;      /* not pressing this button right now */
-
-            /* does 'tracker_hover' handle the event_set? */
-            ControllerTracker best = null;
+            /* returns either tracker_hover or a global tracker, but one
+             * that can handle the event_set. */
             if (tracker_hover != null && (tracker_hover.event_sets & event_set) != 0)
             {
-                best = tracker_hover;
+                return tracker_hover;
             }
             else
             {
-                /* no, look for global trackers */
+                /* look for global trackers */
+                ControllerTracker best = null;
                 float best_priority = float.NegativeInfinity;
 
                 foreach (var ct in global_trackers.Values)
@@ -653,48 +699,140 @@ namespace BaroqueUI
                             ct.PickIfBetter(priority, ref best, ref best_priority);
                     }
                 }
-                if (best == null)
-                    return;       /* still not found, ignore the button click */
-
                 /* If it's a non-concurrent tracker and it is used by the other controller, cancel */
-                if (!best.isConcurrent)
+                if (best != null && !best.isConcurrent)
                 {
                     foreach (var ctrl in Baroque.GetControllers())
                         if (ctrl != this && ctrl.ActiveWith(best))
-                            return;
+                            return null;
                 }
+                return best;
             }
+        }
 
-            if (active_tracker != null)
-                return;      /* should not occur, but you never know */
-            active_tracker = best;
+        void HandleButtonDown(EControllerButton btn, EEventSet event_set)
+        {
+            if (bitmask_buttons_down & (1U << (int)btn)) == 0)
+                return null;    /* not actually pressing this button */
 
-            if (best == tracker_hover && btn != EControllerButton.Menu)
-                tracker_hover_lock |= 1U << (int)btn;
-
-            ControllerEvent ev = null;
-            switch (btn)
+            ControllerTracker tracker = FindHandler(event_set);
+            if (tracker != null)
             {
-                case EControllerButton.Trigger:  ev = best.i_onTriggerDown;    break;
-                case EControllerButton.Grip:     ev = best.i_onGripDown;       break;
-                case EControllerButton.Touchpad: ev = best.i_onTouchPressDown; break;
-                case EControllerButton.Menu:     ev = best.i_onMenuClick;      break;
+                if (tracker == tracker_hover && btn != EControllerButton.Menu)
+                    tracker_hover_lock |= 1U << (int)btn;
+
+                ControllerEvent ev = null;
+                switch (btn)
+                {
+                    case EControllerButton.Trigger:  ev = tracker.i_onTriggerDown;    break;
+                    case EControllerButton.Grip:     ev = tracker.i_onGripDown;       break;
+                    case EControllerButton.Menu:     ev = tracker.i_onMenuClick;      break;
+                }
+                tracker.Call(ev, this);
             }
-            best.Call(ev, this);
+            return tracker;
         }
 
         void CallButtonDown()
         {
+            const float TOUCHPAD_CLICK_TIME = 0.25f;
+
+            const EEventSet TouchpadAll = (EEventSet.TouchpadAction1 |
+                                           EEventSet.TouchpadAction2 |
+                                           EEventSet.TouchpadAction3);
+
             if (bitmask_buttons_down != 0)
             {
-                HandleButtonDown(EControllerButton.Trigger, EEventSet.Trigger, ref active_trigger);
-                HandleButtonDown(EControllerButton.Grip, EEventSet.Grip, ref active_grip);
-                HandleButtonDown(EControllerButton.Touchpad, EEventSet.Touchpad, ref active_touchpad);
+                if (active_trigger == null)
+                    active_trigger = HandleButtonDown(EControllerButton.Trigger, EEventSet.Trigger);
 
-                ControllerTracker active_menu = null;
-                HandleButtonDown(EControllerButton.Menu, EEventSet.Menu, ref active_menu);
+                if (active_grip == null)
+                    active_grip = HandleButtonDown(EControllerButton.Grip, EEventSet.Grip);
+
+                HandleButtonDown(EControllerButton.Menu, EEventSet.Menu);
+
+                /* == Handle the touchpad == */
+
+                if ((bitmask_buttons_down & (1U << (int)EControllerButton.TouchpadTouched)) != 0)
+                {
+                    /* starting to touch: the only case is "released" => "small delay" */
+                    touch_original_pos2 = touchpadPosition;
+                    touch_original_pos3 = position;
+
+                    if (active_touchpad_state == ATS_NONE)
+                    {
+                        Debug.Assert(active_touchpad == null);
+                        active_touchpad = FindHandler(TouchpadAll);
+                        if (active_touchpad != null)
+                        {
+                            if (active_touchpad == tracker_hover)
+                                tracker_hover_lock |= 1U << (int)EControllerButton.Touchpad;
+
+                            EEventSet es = active_touchpad.event_sets;
+                            int count = (es & EEventSet.TouchpadAction1) != 0 ? 1 : 0 +
+                                        (es & EEventSet.TouchpadAction2) != 0 ? 1 : 0 +
+                                        (es & EEventSet.TouchpadAction3) != 0 ? 1 : 0;
+                            float delay = count >= 2 ? TOUCHPAD_CLICK_TIME : 1e-20f;
+                            active_touchpad_state = Time.time + delay;
+                        }
+                    }
+                }
+
+                if ((bitmask_buttons_down & (1U << (int)EControllerButton.Touchpad)) != 0)
+                {
+                    /* pressing: goes to "action 1" if the tracker handles it */
+                    ControllerTracker cs = active_touchpad;
+                    if (cs == null)
+                        cs = HandleButtonDown(EControllerButton.Touchpad, EEventSet.TouchpadAction1);
+
+                    if (cs != null && (cs.event_set & EEventSet.TouchpadAction1) != 0)
+                    {
+                        StopTouchpadAction();
+                        active_touchpad_state = ATS_ACTION1;
+                        active_touchpad = cs;
+                        active_touchpad.Call(active_touchpad.i_OnTouchPressDown, this);
+                    }
+                }
             }
-            overlapping_trackers.Clear();
+
+            /* == More touchpad handling == */
+
+            if (touchpadTouched)
+            {
+                if (active_touchpad_state == ATS_NONE || active_touchpad_state > 0)
+                {
+                    const float TOUCHPAD_SCROLL_DISTANCE = 0.16f;
+                    const float TOUCHPAD_DRAG_SPACE_DISTANCE = 0.08f;
+
+                    ControllerTracker cs = active_touchpad;
+                    if (cs == null)
+                        cs = FindHandler(EEventSet.TouchpadAction2 | EEventSet.TouchpadAction3);
+
+                    if (cs != null)
+                    {
+                        if (cs.event_set & EEventSet.TouchpadAction2) != 0)
+                        {
+                            /* detect finger movement */
+                            if (Vector2.Distance(touch_original_pos2, touchpadPosition) > TOUCHPAD_SCROLL_DISTANCE)
+                            {
+                                active_touchpad_state = ATS_ACTION2;
+                                active_touchpad = cs;
+                            }
+                        }
+                        if (active_touchpad_state > 0 && cs.event_set & EEventSet.TouchpadAction3) != 0)
+                        {
+                            /* detect timeout or controller movement from the "small delay" state */
+                            if (active_touchpad_state <= Time.time ||
+                                Vector3.Distance(touch_original_pos3, position) > TOUCHPAD_DRAG_SPACE_DISTANCE)
+                            {
+                                active_touchpad_state = ATS_ACTION3;
+                                active_touchpad = cs;
+                                active_touchpad.Call(active_touchpad.i_OnTouchDown, this);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         static internal void UpdateAllControllers(Controller[] controllers)
