@@ -16,7 +16,7 @@ namespace BaroqueUI
         Rigidbody original_nonkinematic;
         Dictionary<Renderer, Material[]> original_materials;
 
-        private void Start()
+        public virtual void Start()
         {
             var ct = Controller.HoverTracker(this);
             ct.onEnter += OnEnter;

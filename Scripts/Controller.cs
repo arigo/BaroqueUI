@@ -455,7 +455,7 @@ namespace BaroqueUI
                     foreach (var tracker in tr.GetComponents<MonoBehaviour>())
                     {
                         ControllerTracker ct;
-                        if (!hover_trackers.TryGetValue(tracker, out ct))
+                        if (tracker == null || !hover_trackers.TryGetValue(tracker, out ct))
                             continue;
 
                         float priority = ct.computePriority(this);
