@@ -32,6 +32,7 @@ namespace BaroqueUI
         public Vector3 angularVelocity { get { return DampingEstimateAngularVelocity(); } }
 
         public bool triggerPressed { get { return GetButton(EControllerButton.Trigger); } }
+        public float triggerVariablePressure { get { return controllerState.rAxis1.x; } }
         public bool touchpadPressed { get { return GetButton(EControllerButton.Touchpad); } }
         public bool gripPressed { get { return GetButton(EControllerButton.Grip); } }
         public bool menuPressed { get { return GetButton(EControllerButton.Menu); } }
