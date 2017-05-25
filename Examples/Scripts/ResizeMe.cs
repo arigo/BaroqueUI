@@ -1,16 +1,20 @@
-﻿#warning "FIX ME"
-#if false
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 
 
-public class ResizeMe : ControllerTracker
+public class ResizeMe : MonoBehaviour
 {
     public Dialog dialogActionButtons;
 
-    public override void OnTriggerDown(Controller controller)
+    void Start()
+    {
+        var ct = Controller.HoverTracker(this);
+        ct.onTriggerDown += OnTriggerDown;
+    }
+
+    void OnTriggerDown(Controller controller)
     {
         var popup = dialogActionButtons.MakePopup(controller, gameObject);
         if (popup == null)
@@ -37,4 +41,3 @@ public class ResizeMe : ControllerTracker
         });
     }
 }
-#endif

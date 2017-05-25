@@ -1,15 +1,19 @@
-﻿#warning "FIX ME"
-#if false
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 
 
-public class ColorMe : ControllerTracker
+public class ColorMe : MonoBehaviour
 {
-    public override void OnTriggerDown(Controller controller)
+    void Start()
+    {
+        var ct = Controller.HoverTracker(this);
+        ct.onTriggerDown += OnTriggerDown;
+    }
+
+    void OnTriggerDown(Controller controller)
     {
         /* the Menu may also be created in advance and reused */
         Material mat = GetComponent<Renderer>().material;
@@ -23,4 +27,3 @@ public class ColorMe : ControllerTracker
         menu.MakePopup(controller, gameObject);
     }
 }
-#endif

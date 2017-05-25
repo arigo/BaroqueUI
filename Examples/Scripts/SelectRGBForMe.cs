@@ -1,16 +1,20 @@
-﻿#warning "FIX ME"
-#if false
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 
 
-public class SelectRGBForMe : ControllerTracker
+public class SelectRGBForMe : MonoBehaviour
 {
     public Dialog selectRGBDialog;
 
-    public override void OnTriggerDown(Controller controller)
+    void Start()
+    {
+        var ct = Controller.HoverTracker(this);
+        ct.onTriggerDown += OnTriggerDown;
+    }
+
+    void OnTriggerDown(Controller controller)
     {
         Material mat = GetComponent<Renderer>().material;
 
@@ -43,4 +47,3 @@ public class SelectRGBForMe : ControllerTracker
         });
     }
 }
-#endif

@@ -300,14 +300,11 @@ namespace BaroqueUI
             UpdateRenderingOnce(includeInactive: true);
             StartCoroutine(UpdateRendering());
 
-#warning "FIX ME"
-#if false
             foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
                 if (inputField.GetComponent<KeyboardVRInput>() == null)
                     inputField.gameObject.AddComponent<KeyboardVRInput>();
             }
-#endif
 
             StartAutomaticKeyboard();
 
@@ -622,13 +619,10 @@ namespace BaroqueUI
 
         /****************************************************************************************/
 
-#warning "FIX ME"
-#if false
         KeyboardClicker auto_keyboard;
-#endif
+
         void StartAutomaticKeyboard()
         {
-#if false
             if (automaticKeyboard && GetComponentInChildren<KeyboardVRInput>() != null && auto_keyboard == null)
             {
                 GameObject keyboard_prefab = Resources.Load<GameObject>("BaroqueUI/Keyboard");
@@ -646,19 +640,16 @@ namespace BaroqueUI
 
                 auto_keyboard.onKeyboardTyping.AddListener(KeyboardTyping);
             }
-#endif
         }
         void StopAutomaticKeyboard()
         {
-#if false
             if (auto_keyboard != null && auto_keyboard)
             {
                 Destroy(auto_keyboard.gameObject);
             }
             auto_keyboard = null;
-#endif
         }
-#if false
+
         public void KeyboardTyping(KeyboardClicker.EKeyState state, string key)
         {
             GameObject gobj = EventSystem.current.currentSelectedGameObject;
@@ -676,7 +667,6 @@ namespace BaroqueUI
             if (keyboardVrInput != null)
                 keyboardVrInput.KeyboardTyping(state, key);
         }
-#endif
     }
 
 

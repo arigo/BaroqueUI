@@ -1,13 +1,10 @@
-﻿#warning "FIX ME"
-#if false
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
-using BaroqueUI;
 using System.Runtime.InteropServices;
 
 
@@ -45,7 +42,7 @@ namespace BaroqueUI
     }
 
 
-    public class KeyboardClicker : ConcurrentControllerTracker
+    public class KeyboardClicker : MonoBehaviour
     {
         public enum EKeyState { Preview, Confirm, Special_Backspace, Special_Tab, Special_Enter, Special_Esc };
 
@@ -246,6 +243,14 @@ namespace BaroqueUI
                 canvas.worldCamera = GetControllerCamera();
 
             locals = new List<Local>();
+
+            var ct = Controller.HoverTracker(this);
+            ct.SetPriorityFromDistance(controllerPriority);
+            ct.isConcurrent = true;
+            ct.onEnter += OnEnter;
+            ct.onControllersUpdate += OnControllersUpdate;
+            ct.onLeave += OnLeave;
+            ct.onTouchDown += (ctrl) => { };   /* needed to grab interest in the touchpad */
         }
 
         void AddDeadKeyCombination(Dictionary<int, string[]> all_regular_scancodes, string key_text,
@@ -378,7 +383,7 @@ namespace BaroqueUI
         Local unconfirmed_key_local;
 
 
-        public override void OnEnter(Controller controller)
+        protected virtual void OnEnter(Controller controller)
         {
             locals.Add(new Local
             {
@@ -528,7 +533,7 @@ namespace BaroqueUI
                 ConfirmKey();
         }
 
-        public override void OnMove(Controller[] controllers)
+        protected virtual void OnControllersUpdate(Controller[] controllers)
         {
             foreach (var local in locals)
             {
@@ -547,7 +552,7 @@ namespace BaroqueUI
                     if (local.altgr_touched != null)
                     {
                         local.altgr_touched = null;
-                        local.ctrl.GrabFromScript(false);
+                        local.ctrl.GrabHover(false);
                     }
                     continue;
                 }
@@ -562,7 +567,7 @@ namespace BaroqueUI
                             if (key.scan_code == SCAN_ALTGR)
                             {
                                 local.altgr_touched = key;
-                                local.ctrl.GrabFromScript(true);
+                                local.ctrl.GrabHover(true);
                             }
                             else
                                 local.just_touched = key;
@@ -682,7 +687,7 @@ namespace BaroqueUI
             }
         }
 
-        public override void OnLeave(Controller controller)
+        protected virtual void OnLeave(Controller controller)
         {
             for (int i = 0; i < locals.Count; i++)
             {
@@ -693,20 +698,9 @@ namespace BaroqueUI
                 }
             }
             UpdateAltGr();
-            controller.SetPointer(null);
+            controller.SetPointer("");
             if (locals.Count == 0)
                 is_active = 1;
         }
-
-        public override bool CanStartTeleportAction(Controller controller)
-        {
-            return false;
-        }
-
-        public override float GetPriority(Controller controller)
-        {
-            return controllerPriority;
-        }
     }
 }
-#endif

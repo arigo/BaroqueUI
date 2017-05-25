@@ -1,16 +1,20 @@
-﻿#warning "FIX ME"
-#if false
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 
 
-public class ChooseLengthForMe : ControllerTracker
+public class ChooseLengthForMe : MonoBehaviour
 {
     public Dialog dialogChooseLength;
 
-    public override void OnTriggerDown(Controller controller)
+    void Start()
+    {
+        var ct = Controller.HoverTracker(this);
+        ct.onTriggerDown += OnTriggerDown;
+    }
+
+    void OnTriggerDown(Controller controller)
     {
         var popup = dialogChooseLength.MakePopup(controller, gameObject);
         if (popup == null)
@@ -27,4 +31,3 @@ public class ChooseLengthForMe : ControllerTracker
         });
     }
 }
-#endif
