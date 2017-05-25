@@ -291,7 +291,7 @@ namespace BaroqueUI
         Vector3 current_position;
         Quaternion current_rotation;
         ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
-        uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
+        protected uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
         GameObject pointer_object, pointer_object_prefab;
         string pointer_str_name;
         int controller_index;
@@ -336,12 +336,11 @@ namespace BaroqueUI
             ResetVelocityEstimates();
         }
 
-        Vector3 ComputePosition()
+        /* a few virtual methods that can be overriden by FakeController */
+        protected virtual Vector3 ComputePosition()
         {
             return transform.position + transform.rotation * POS_TO_CURSOR;
         }
-
-        /* a few virtual methods that can be overriden by FakeController */
         protected virtual bool GetControllerState(ref VRControllerState_t controllerState)
         {
             var system = OpenVR.System;
@@ -520,8 +519,11 @@ namespace BaroqueUI
             if (active_touchpad_state > 0)
             {
                 /* we are in the "small delay" state.  Send the touchpad-touch event now */
-                active_touchpad.Call(active_touchpad.i_onTouchDown, this);
+                Vector3 saved = current_position;
                 active_touchpad_state = ATS_ACTION3;
+                current_position = touch_original_pos3;
+                active_touchpad.Call(active_touchpad.i_onTouchDown, this);
+                current_position = saved;
             }
             StopTouchpadAction();
 
@@ -833,6 +835,8 @@ namespace BaroqueUI
                             {
                                 active_touchpad_state = ATS_ACTION2;
                                 active_touchpad = cs;
+                                if (active_touchpad == tracker_hover)
+                                    tracker_hover_lock |= 1U << (int)EControllerButton.Touchpad;
                             }
                         }
                         if (active_touchpad_state > 0 && (cs.event_sets & EEventSet.TouchpadAction3) != 0)
@@ -841,9 +845,12 @@ namespace BaroqueUI
                             if (active_touchpad_state <= GetTime() ||
                                 Vector3.Distance(touch_original_pos3, position) > TOUCHPAD_DRAG_SPACE_DISTANCE)
                             {
+                                Vector3 saved = current_position;
                                 active_touchpad_state = ATS_ACTION3;
                                 active_touchpad = cs;
+                                current_position = touch_original_pos3;
                                 active_touchpad.Call(active_touchpad.i_onTouchDown, this);
+                                current_position = saved;
                             }
                         }
                     }
