@@ -75,13 +75,17 @@ namespace BaroqueUI
 
         public static void DrawLine(Vector3 from, Vector3 to)
         {
-            MakeLine(from, to);
+            if (!Application.isEditor)
+                MakeLine(from, to);
         }
 
         public static void DrawLine(Vector3 from, Vector3 to, Color color)
         {
-            GameObject go = MakeLine(from, to);
-            go.GetComponent<Renderer>().material.color = color;
+            if (!Application.isEditor)
+            {
+                GameObject go = MakeLine(from, to);
+                go.GetComponent<Renderer>().material.color = color;
+            }
         }
 
         static GameObject MakeLine(Vector3 from, Vector3 to)
@@ -160,6 +164,16 @@ namespace BaroqueUI
             RemoveDrawings();
             if (controllers.Length > 0)
                 Controller.UpdateAllControllers(controllers);
+        }
+
+
+        /*********************************************************************************************/
+
+        static internal void InitTests()
+        {
+            controllersReady = false;
+            globallyReady = true;
+            InitControllers();
         }
     }
 }
