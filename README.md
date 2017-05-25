@@ -97,6 +97,7 @@ velocity of a point that is slightly in front of the controller, which
 plays the role of "the position of the mouse pointer" in BaroqueUI.
 
         public bool triggerPressed;    // bottom of the controller
+        public float triggerVariablePressure;   // between 0 and 1
         public bool touchpadPressed;   // big round area
         public bool gripPressed;       // side buttons
         public bool menuPressed;       // top small button
