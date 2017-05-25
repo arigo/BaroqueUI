@@ -34,8 +34,8 @@ namespace BaroqueUI
 
         void HandleLog(string logString, string stackTrace, LogType type)
         {
-            RectTransform itemPrefab = transform.FindChild("Item Prefab") as RectTransform;
-            RectTransform viewport = transform.FindChild("Viewport") as RectTransform;
+            RectTransform itemPrefab = transform.Find("Item Prefab") as RectTransform;
+            RectTransform viewport = transform.Find("Viewport") as RectTransform;
             RectTransform item = Instantiate<RectTransform>(itemPrefab, viewport);
 
             if ((total_entries++ & 1) == 0)
@@ -48,8 +48,8 @@ namespace BaroqueUI
                 case LogType.Warning: spr = warningSprite; break;
                 default: spr = errorSprite; break;
             }
-            item.FindChild("Image").GetComponent<Image>().sprite = spr;
-            item.FindChild("Text").GetComponent<Text>().text = logString;
+            item.Find("Image").GetComponent<Image>().sprite = spr;
+            item.Find("Text").GetComponent<Text>().text = logString;
             items.Add(item as RectTransform);
             item.gameObject.SetActive(true);
 

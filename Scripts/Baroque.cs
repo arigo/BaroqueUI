@@ -59,7 +59,7 @@ namespace BaroqueUI
                 }
                 else
                 {
-                    tr = tr.FindChild(name);
+                    tr = tr.Find(name);
                 }
                 if (tr == null)
                     throw new System.Exception("gameobject not found: '" + path_in_scene + "'");

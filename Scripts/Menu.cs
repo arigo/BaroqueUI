@@ -72,7 +72,7 @@ namespace BaroqueUI
                     y += full_item_size.y - OVERLAP;
 
                     Item item = menu_items[i];
-                    button.FindChild("Text").GetComponent<Text>().text = item.text;
+                    button.Find("Text").GetComponent<Text>().text = item.text;
                     button.GetComponent<Button>().onClick.AddListener(() => {
                         UnityEngine.Object.Destroy(menu);
                         item.onClick();
