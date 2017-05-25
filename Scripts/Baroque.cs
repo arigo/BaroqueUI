@@ -130,6 +130,11 @@ namespace BaroqueUI
         {
             if (!controllersReady)
             {
+#if UNITY_5_6
+                /* hack hack hack for SteamVR */
+                if (GetHeadTransform().GetComponent<SteamVR_UpdatePoses>() == null)
+                    GetHeadTransform().gameObject.AddComponent<SteamVR_UpdatePoses>();
+#endif
                 Controller.InitControllers();
                 controllers = new Controller[2];
                 left_controller = InitController(GetSteamVRManager().left, 0);
