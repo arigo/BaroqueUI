@@ -895,8 +895,6 @@ namespace BaroqueUI
 
             ResolveControllerConflicts(controllers);
 
-            CallControllersUpdate(controllers);   /* calls OnControllerUpdates() */
-
             foreach (var ctrl in controllers)
                 ctrl.CallLeaveEvents();    /* calls OnLeave() */
 
@@ -905,6 +903,8 @@ namespace BaroqueUI
 
             foreach (var ctrl in controllers)
                 ctrl.CallButtonDown();     /* calls OnXxxDown() */
+
+            CallControllersUpdate(controllers);   /* calls OnControllersUpdate() */
 
             foreach (var ctrl in controllers)
                 ctrl.CallControllerMove();    /* calls OnMoveOver/OnXxxDrag */

@@ -1,13 +1,11 @@
-﻿#warning "FIX ME"
-#if false
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using BaroqueUI;
 using System;
 
 
-public class MetalScript : ConcurrentControllerTracker
+public class MetalScript : MonoBehaviour
 {
     public GameObject selectedPointPrefab;
     public GameObject pointerDeform, pointerMove;
@@ -24,6 +22,16 @@ public class MetalScript : ConcurrentControllerTracker
         triangles = mesh.triangles;
 
         UpdatedMeshVertices();
+
+        var ct = Controller.HoverTracker(this);
+        ct.isConcurrent = true;
+        ct.onEnter += OnEnter;
+        ct.onControllersUpdate += OnControllersUpdate;
+        ct.onLeave += OnLeave;
+        ct.onTriggerDown += OnTriggerDown;
+        ct.onTriggerUp += OnTriggerUp;
+        ct.onGripDown += OnGripDown;
+        ct.onGripUp += OnGripUp;
     }
 
     void UpdatedMeshVertices()
@@ -168,7 +176,7 @@ public class MetalScript : ConcurrentControllerTracker
 
     class Local
     {
-        internal GameObject current_pointer;
+        internal Transform current_pointer;
         internal Vector3 pointer_scale;
 
         internal HashSet<int> dragging;
@@ -210,11 +218,11 @@ public class MetalScript : ConcurrentControllerTracker
     public void SetHoverPointer(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
-        local.current_pointer = controller.SetPointerPrefab(pointerDeform);
-        local.pointer_scale = local.current_pointer.transform.localScale;
+        local.current_pointer = controller.SetPointer(pointerDeform);
+        local.pointer_scale = local.current_pointer.localScale;
     }
 
-    public override void OnEnter(Controller controller)
+    void OnEnter(Controller controller)
     {
         SetHoverPointer(controller);
         controller.SetScrollWheel(visible: true);
@@ -235,7 +243,7 @@ public class MetalScript : ConcurrentControllerTracker
         local.Reset();
     }
 
-    public override void OnMove(Controller[] controllers)
+    void OnControllersUpdate(Controller[] controllers)
     {
         bool updated_vertices = false;
 
@@ -356,7 +364,7 @@ public class MetalScript : ConcurrentControllerTracker
                         }
                     }
                 }
-                local.current_pointer.transform.localScale = local.pointer_scale * scale;
+                local.current_pointer.localScale = local.pointer_scale * scale;
             }
 
             switch (show_hints)
@@ -397,16 +405,16 @@ public class MetalScript : ConcurrentControllerTracker
         }
     }
 
-    public override void OnLeave(Controller controller)
+    void OnLeave(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
-        controller.SetPointerPrefab(null);
+        controller.SetPointer("");
         controller.SetScrollWheel(visible: false);
         controller.SetControllerHints();
     }
 
-    public override void OnTriggerDown(Controller controller)
+    void OnTriggerDown(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
@@ -436,31 +444,30 @@ public class MetalScript : ConcurrentControllerTracker
             }
         }
 
-        controller.SetPointerPrefab(null);
+        controller.SetPointer("");
     }
 
-    public override void OnTriggerUp(Controller controller)
+    void OnTriggerUp(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
         SetHoverPointer(controller);
     }
 
-    public override void OnGripDown(Controller controller)
+    void OnGripDown(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
         local.is_gripping = true;
         local.org_position = local.prev_position = transform.InverseTransformPoint(controller.position);
 
-        controller.SetPointerPrefab(pointerMove);
+        controller.SetPointer(pointerMove);
     }
 
-    public override void OnGripUp(Controller controller)
+    void OnGripUp(Controller controller)
     {
         Local local = controller.GetAdditionalData(ref locals);
         local.Reset();
         SetHoverPointer(controller);
     }
 }
-#endif
