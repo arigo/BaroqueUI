@@ -202,6 +202,7 @@ namespace BaroqueUI
             UpdateAllControllers(GetControllers());
             Debug.Assert(hover == CurrentHoverTracker());
             Debug.Assert(hover_lock == tracker_hover_lock);
+            Debug.Assert((active_touchpad_state == ActiveTouchpadState.None) == (active_touchpad == null));
             ShouldHaveSeen(msgs);
         }
 
@@ -330,7 +331,7 @@ namespace BaroqueUI
                             left_ctrl.t_position = new Vector3(1, 0, 0);
                             left_ctrl.t_touchpad_touched = false;
                             if (act3)
-                                left_ctrl.Check(tt, 0, "OnTouchDown@1.001,0,0", "OnTouchUp@1.002,0,0", "OnMoveOver");
+                                left_ctrl.Check(tt, 0, "OnTouchDown@1.001,0,0", "OnTouchDrag@1.001,0,0", "OnTouchUp@1.001,0,0", "OnMoveOver");
                             else
                                 left_ctrl.Check(tt, 0, "OnMoveOver");
                             left_ctrl.Check(tt, 0, "OnMoveOver");
@@ -429,6 +430,23 @@ namespace BaroqueUI
                                 }
                                 left_ctrl.t_touchpad_touched = false;
                                 left_ctrl.Check(tt, 0, "OnMoveOver");
+                            }
+                            else if (act3)
+                            {
+                                left_ctrl.t_touchpad_touched = true;
+                                left_ctrl.t_position = new Vector3(3, 1, 1);
+                                left_ctrl.Check(tt, TLOCK, "OnMoveOver");
+                                left_ctrl.t_touchpad_pressed = true;          /* not handled, but still forces OnTouchDown immediately */
+                                left_ctrl.t_position = new Vector3(3, 1, 2);
+                                left_ctrl.Check(tt, TLOCK, "OnTouchDown@3,1,1", "OnTouchDrag@3,1,2");
+                                left_ctrl.t_position = new Vector3(3, 1, 4);
+                                left_ctrl.Check(tt, TLOCK, "OnTouchDrag@3,1,4");
+                                left_ctrl.t_touchpad_pressed = false;
+                                left_ctrl.t_position = new Vector3(3, 1, 5);
+                                left_ctrl.Check(tt, TLOCK, "OnTouchDrag@3,1,5");
+                                left_ctrl.t_touchpad_touched = false;
+                                left_ctrl.t_position = new Vector3(3, 1, 6);
+                                left_ctrl.Check(tt, 0, "OnTouchUp@3,1,5", "OnMoveOver");
                             }
                         }
                         else

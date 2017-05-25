@@ -62,7 +62,8 @@ namespace BaroqueUI
 
         public void HapticPulse(int durationMicroSec = 500)
         {
-            SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
+            if (!Application.isEditor)
+                SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
         }
 
         public Transform SetPointer(string pointer_name)
@@ -104,7 +105,10 @@ namespace BaroqueUI
 
         public void SetScrollWheel(bool visible)
         {
-            scrollWheelVisible = visible;
+            if (visible)
+                scrollWheelVisible |= SWV_FROMSCRIPT;
+            else
+                scrollWheelVisible &= ~SWV_FROMSCRIPT;
             UpdateScrollWheel();
         }
 
@@ -290,7 +294,7 @@ namespace BaroqueUI
         uint bitmask_buttons, bitmask_buttons_down;
         Vector3 current_position;
         Quaternion current_rotation;
-        ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
+        protected ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
         protected uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
         GameObject pointer_object, pointer_object_prefab;
         string pointer_str_name;
@@ -300,18 +304,20 @@ namespace BaroqueUI
         float tracker_hover_next_priority;
         protected bool is_tracking_active;
 
-        const float ATS_NONE = 0;
-        const float ATS_ACTION1 = -1;
-        const float ATS_ACTION2 = -2;
-        const float ATS_ACTION3 = -3;
-        float active_touchpad_state;   /* if > 0, the timeout for the small delay.
-                                          Invariant: active_touchpad_state == ATS_NONE
-                                          if and only if active_touchpad == null */
-        Vector2 touch_original_pos2;
-        Vector3 touch_original_pos3;
+        protected enum ActiveTouchpadState
+        {
+            None, SmallDelay, Action1, Action2, Action3
+            /* Invariant: active_touchpad_state == None if and only if active_touchpad == null */
+        }
+        protected ActiveTouchpadState active_touchpad_state;
+        float active_touchpad_timeout;   /* valid in states SmallDelay or Action2 */
+        Vector2 touch_original_pos2;     /* valid in states SmallDelay or Action2; also None if touchpadTouched */
+        Vector3 touch_original_pos3;     /* valid in state SmallDelay */
 
         SteamVR_TrackedObject trackedObject;
-        bool scrollWheelVisible;
+        const int SWV_FROMSCRIPT = 1;
+        const int SWV_SCROLLING = 2;
+        int scrollWheelVisible;
 
         Dictionary<ControllerTracker, float> overlapping_trackers;
         static List<ControllerTracker> called_controllers_update;
@@ -414,7 +420,7 @@ namespace BaroqueUI
             if (active_grip != null && !gripPressed)
                 DeactivateGrip();
             if (active_touchpad != null &&
-                    (!touchpadTouched || (active_touchpad_state == ATS_ACTION1 && !touchpadPressed)))
+                    (!touchpadTouched || (active_touchpad_state == ActiveTouchpadState.Action1 && !touchpadPressed)))
                 DeactivateTouchpad();
 
             if (is_tracking_active)
@@ -495,37 +501,41 @@ namespace BaroqueUI
 
         void StopTouchpadAction()
         {
-            if (active_touchpad_state == ATS_ACTION1)
+            switch (active_touchpad_state)
             {
-                /* stop pressing the touchpad */
-                active_touchpad.Call(active_touchpad.i_onTouchPressUp, this);
+                case ActiveTouchpadState.Action1:
+                    /* stop pressing the touchpad */
+                    active_touchpad.Call(active_touchpad.i_onTouchPressUp, this);
+                    break;
+
+                case ActiveTouchpadState.Action2:
+                    /* stop scrolling (no event sent, for now) */
+                    scrollWheelVisible &= ~SWV_SCROLLING;
+                    UpdateScrollWheel();
+                    break;
+
+                case ActiveTouchpadState.Action3:
+                    /* stop touching the touchpad */
+                    active_touchpad.Call(active_touchpad.i_onTouchUp, this);
+                    break;
             }
-            else if (active_touchpad_state == ATS_ACTION2)
-            {
-                /* stop scrolling (no event sent, for now) */
-            }
-            else if (active_touchpad_state == ATS_ACTION3)
-            {
-                /* stop touching the touchpad */
-                active_touchpad.Call(active_touchpad.i_onTouchUp, this);
-            }
-            active_touchpad_state = ATS_NONE;
-            touch_original_pos2 = touchpadPosition;
-            touch_original_pos3 = position;
+            active_touchpad_state = ActiveTouchpadState.None;
+            touch_original_pos2 = touchpadPosition;   /* in case touchpadTouched is still true */
         }
 
         void DeactivateTouchpad()
         {
-            if (active_touchpad_state > 0)
+            Vector3 saved = current_position;
+            if (active_touchpad_state == ActiveTouchpadState.SmallDelay)
             {
                 /* we are in the "small delay" state.  Send the touchpad-touch event now */
-                Vector3 saved = current_position;
-                active_touchpad_state = ATS_ACTION3;
+                active_touchpad_state = ActiveTouchpadState.Action3;
                 current_position = touch_original_pos3;
                 active_touchpad.Call(active_touchpad.i_onTouchDown, this);
-                current_position = saved;
+                active_touchpad.Call(active_touchpad.i_onTouchDrag, this);
             }
             StopTouchpadAction();
+            current_position = saved;
 
             if (active_touchpad == tracker_hover)
                 tracker_hover_lock &= ~(1U << (int)EControllerButton.Touchpad);
@@ -638,23 +648,39 @@ namespace BaroqueUI
 
             if (active_touchpad != null)
             {
-                if (active_touchpad_state == ATS_ACTION1)
+                switch (active_touchpad_state)
                 {
-                    active_touchpad.Call(active_touchpad.i_onTouchPressDrag, this);
+                    case ActiveTouchpadState.Action1:
+                        active_touchpad.Call(active_touchpad.i_onTouchPressDrag, this);
+                        break;
+
+                    case ActiveTouchpadState.Action2:
+                        Vector2 p = touchpadPosition;
+                        Vector2 d = p - touch_original_pos2;
+                        touch_original_pos2 = p;
+                        active_touchpad.Call(active_touchpad.i_onTouchScroll, this, d);
+
+                        /* in the Action2 mode, active_touchpad_timeout is abused to decrease not
+                         * based on time but based on distance */
+                        active_touchpad_timeout -= d.magnitude;
+                        if (active_touchpad_timeout < 0)
+                        {
+                            const int TOUCHPAD_HAPTIC_STRENGTH = 200;
+                            const float TOUCHPAD_HAPTIC_DISTANCE = 0.1f;
+
+                            HapticPulse(TOUCHPAD_HAPTIC_STRENGTH);
+                            active_touchpad_timeout = TOUCHPAD_HAPTIC_DISTANCE;
+                        }
+                        break;
+
+                    case ActiveTouchpadState.Action3:
+                        active_touchpad.Call(active_touchpad.i_onTouchDrag, this);
+                        break;
+
+                    case ActiveTouchpadState.SmallDelay:
+                        lock_ignore |= 1U << (int)EControllerButton.Touchpad;
+                        break;
                 }
-                else if (active_touchpad_state == ATS_ACTION2)
-                {
-                    Vector2 p = touchpadPosition;
-                    Vector2 d = p - touch_original_pos2;
-                    touch_original_pos2 = p;
-                    active_touchpad.Call(active_touchpad.i_onTouchScroll, this, d);
-                }
-                else if (active_touchpad_state == ATS_ACTION3)
-                {
-                    active_touchpad.Call(active_touchpad.i_onTouchDrag, this);
-                }
-                else
-                    lock_ignore |= 1U << (int)EControllerButton.Touchpad;
             }
 
             if (tracker_hover != null && ((tracker_hover_lock & ~lock_ignore) == 0))
@@ -775,9 +801,8 @@ namespace BaroqueUI
                 {
                     /* starting to touch: the only case is "released" => "small delay" */
                     touch_original_pos2 = touchpadPosition;
-                    touch_original_pos3 = position;
 
-                    if (active_touchpad_state == ATS_NONE)
+                    if (active_touchpad_state == ActiveTouchpadState.None)
                     {
                         Debug.Assert(active_touchpad == null);
                         active_touchpad = FindHandler(TouchpadAll);
@@ -791,7 +816,9 @@ namespace BaroqueUI
                                         ((es & EEventSet.TouchpadAction2) != 0 ? 1 : 0) +
                                         ((es & EEventSet.TouchpadAction3) != 0 ? 1 : 0);
                             float delay = count >= 2 ? TOUCHPAD_CLICK_TIME : 1e-20f;
-                            active_touchpad_state = GetTime() + delay;
+                            active_touchpad_state = ActiveTouchpadState.SmallDelay;
+                            active_touchpad_timeout = GetTime() + delay;
+                            touch_original_pos3 = position;
                         }
                     }
                 }
@@ -806,7 +833,7 @@ namespace BaroqueUI
                     if (cs != null && (cs.event_sets & EEventSet.TouchpadAction1) != 0)
                     {
                         StopTouchpadAction();
-                        active_touchpad_state = ATS_ACTION1;
+                        active_touchpad_state = ActiveTouchpadState.Action1;
                         active_touchpad = cs;
                         active_touchpad.Call(active_touchpad.i_onTouchPressDown, this);
                     }
@@ -817,9 +844,9 @@ namespace BaroqueUI
 
             if (touchpadTouched)
             {
-                if (active_touchpad_state == ATS_NONE || active_touchpad_state > 0)
+                if (active_touchpad_state == ActiveTouchpadState.None || active_touchpad_state == ActiveTouchpadState.SmallDelay)
                 {
-                    const float TOUCHPAD_SCROLL_DISTANCE = 0.16f;
+                    const float TOUCHPAD_SCROLL_DISTANCE = 0.22f;
                     const float TOUCHPAD_DRAG_SPACE_DISTANCE = 0.08f;
 
                     ControllerTracker cs = active_touchpad;
@@ -833,20 +860,23 @@ namespace BaroqueUI
                             /* detect finger movement */
                             if (Vector2.Distance(touch_original_pos2, touchpadPosition) > TOUCHPAD_SCROLL_DISTANCE)
                             {
-                                active_touchpad_state = ATS_ACTION2;
+                                active_touchpad_timeout = 0;
+                                active_touchpad_state = ActiveTouchpadState.Action2;
                                 active_touchpad = cs;
                                 if (active_touchpad == tracker_hover)
                                     tracker_hover_lock |= 1U << (int)EControllerButton.Touchpad;
+                                scrollWheelVisible |= SWV_SCROLLING;
+                                UpdateScrollWheel();
                             }
                         }
-                        if (active_touchpad_state > 0 && (cs.event_sets & EEventSet.TouchpadAction3) != 0)
+                        if (active_touchpad_state == ActiveTouchpadState.SmallDelay && (cs.event_sets & EEventSet.TouchpadAction3) != 0)
                         {
                             /* detect timeout or controller movement from the "small delay" state */
-                            if (active_touchpad_state <= GetTime() ||
+                            if (active_touchpad_timeout <= GetTime() ||
                                 Vector3.Distance(touch_original_pos3, position) > TOUCHPAD_DRAG_SPACE_DISTANCE)
                             {
                                 Vector3 saved = current_position;
-                                active_touchpad_state = ATS_ACTION3;
+                                active_touchpad_state = ActiveTouchpadState.Action3;
                                 active_touchpad = cs;
                                 current_position = touch_original_pos3;
                                 active_touchpad.Call(active_touchpad.i_onTouchDown, this);
@@ -954,9 +984,9 @@ namespace BaroqueUI
             Transform tr1 = transform.Find("Model/scroll_wheel");
             Transform tr2 = transform.Find("Model/trackpad_scroll_cut");
             Transform tr3 = transform.Find("Model/trackpad");
-            if (tr1 != null) tr1.gameObject.SetActive(scrollWheelVisible);
-            if (tr2 != null) tr2.gameObject.SetActive(scrollWheelVisible);
-            if (tr3 != null) tr3.gameObject.SetActive(!scrollWheelVisible);
+            if (tr1 != null) tr1.gameObject.SetActive(scrollWheelVisible != 0);
+            if (tr2 != null) tr2.gameObject.SetActive(scrollWheelVisible != 0);
+            if (tr3 != null) tr3.gameObject.SetActive(scrollWheelVisible == 0);
         }
 
         const float HINT_DELAY = 0.75f;
@@ -967,7 +997,7 @@ namespace BaroqueUI
             /* haaaack: we need to constantly re-enable the scroll wheel gameobjects in 
              * the Model.  Officially there must be a way to enable the scroll wheel,
              * but I can't find it for now... */
-            if (scrollWheelVisible)
+            if (scrollWheelVisible != 0)
                 UpdateScrollWheel();
 
             bool too_fast = DampingEstimateVelocity().sqrMagnitude > HINT_MAX_VELOCITY * HINT_MAX_VELOCITY;
