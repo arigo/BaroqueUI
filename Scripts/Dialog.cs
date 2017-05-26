@@ -202,8 +202,7 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
-        IEnumerator updater_coroutine;
-        bool started;
+        BackgroundRenderer background_renderer;
 
         internal const int UI_layer = 29;   /* and the next one */
 
@@ -263,16 +262,7 @@ namespace BaroqueUI
                 child.gameObject.layer = layer;
         }
 
-        IEnumerator UpdateRendering()
-        {
-            while (this && isActiveAndEnabled)
-            {
-                UpdateRenderingOnce();
-                yield return new WaitForSecondsRealtime(0.05f);
-            }
-        }
-
-        void UpdateRenderingOnce(bool fixLayersIncludingInactive = false)
+        void UpdateRenderingOnce()
         {
             RecSetLayer(UI_layer + 1);   /* this layer is visible for the camera */
 
@@ -288,7 +278,7 @@ namespace BaroqueUI
                 rend.Render();
             }
 
-            RecSetLayer(UI_layer, fixLayersIncludingInactive);   /* this layer is not visible any more */
+            RecSetLayer(UI_layer);   /* this layer is not visible any more */
         }
 
         void Start()
@@ -300,9 +290,7 @@ namespace BaroqueUI
             }
 
             CreateLayer();
-            UpdateRenderingOnce(fixLayersIncludingInactive: true);
-            started = true;
-            OnEnable();
+            RecSetLayer(UI_layer, includeInactive: true);
 
             foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
@@ -324,24 +312,28 @@ namespace BaroqueUI
             ct.onTouchDrag += MouseMove;
             ct.onTouchUp += MouseUp;
             ct.onTouchScroll += OnTouchScroll;
+
+            UpdateRenderingOnce();
         }
 
         private void OnEnable()
         {
-            if (started && updater_coroutine == null)
-            {
-                updater_coroutine = UpdateRendering();
-                StartCoroutine(updater_coroutine);
-            }
+            if (background_renderer == null)
+                background_renderer = new BackgroundRenderer(UpdateRenderingOnce);
         }
 
         private void OnDisable()
         {
-            if (updater_coroutine != null)
+            if (background_renderer != null)
             {
-                StopCoroutine(updater_coroutine);
-                updater_coroutine = null;
+                background_renderer.Stop();
+                background_renderer = null;
             }
+        }
+
+        private void LateUpdate()
+        {
+            BackgroundRenderer.LateUpdate();
         }
 
         GameObject SetInitialSelection()
@@ -404,6 +396,7 @@ namespace BaroqueUI
         void OnEnter(Controller controller)
         {
             pevent = new PointerEventData(EventSystem.current);
+            background_renderer.inForeground = true;
         }
 
         void MouseMove(Controller controller)
@@ -531,6 +524,7 @@ namespace BaroqueUI
         {
             UpdateHoveringTarget(null);
             pevent = null;
+            background_renderer.inForeground = false;
         }
 
         void MouseDown(Controller controller)
