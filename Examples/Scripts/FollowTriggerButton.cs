@@ -6,11 +6,11 @@ using BaroqueUI;
 
 public class FollowTriggerButton : MonoBehaviour
 {
-    public int controllerIndex;
-
-	void FixedUpdate()
+	void Update()
     {
-        var ctrl = Baroque.GetControllers()[controllerIndex];
-        transform.rotation = Quaternion.Euler(0, 0, ctrl.triggerVariablePressure * 90);
+        var ctrl0 = Baroque.GetControllers()[0];
+        var ctrl1 = Baroque.GetControllers()[1];
+        float angle = ctrl0.triggerVariablePressure - ctrl1.triggerVariablePressure;
+        transform.rotation = Quaternion.Euler(0, 0, angle * 90);
 	}
 }

@@ -202,6 +202,9 @@ namespace BaroqueUI
 
         /*******************************************************************************************/
 
+        IEnumerator updater_coroutine;
+        bool started;
+
         internal const int UI_layer = 29;   /* and the next one */
 
         static void CreateLayer()
@@ -269,7 +272,7 @@ namespace BaroqueUI
             }
         }
 
-        void UpdateRenderingOnce(bool includeInactive = false)
+        void UpdateRenderingOnce(bool fixLayersIncludingInactive = false)
         {
             RecSetLayer(UI_layer + 1);   /* this layer is visible for the camera */
 
@@ -285,7 +288,7 @@ namespace BaroqueUI
                 rend.Render();
             }
 
-            RecSetLayer(UI_layer, includeInactive);   /* this layer is not visible any more */
+            RecSetLayer(UI_layer, fixLayersIncludingInactive);   /* this layer is not visible any more */
         }
 
         void Start()
@@ -297,8 +300,9 @@ namespace BaroqueUI
             }
 
             CreateLayer();
-            UpdateRenderingOnce(includeInactive: true);
-            StartCoroutine(UpdateRendering());
+            UpdateRenderingOnce(fixLayersIncludingInactive: true);
+            started = true;
+            OnEnable();
 
             foreach (InputField inputField in GetComponentsInChildren<InputField>(includeInactive: true))
             {
@@ -322,6 +326,24 @@ namespace BaroqueUI
             ct.onTouchScroll += OnTouchScroll;
         }
 
+        private void OnEnable()
+        {
+            if (started && updater_coroutine == null)
+            {
+                updater_coroutine = UpdateRendering();
+                StartCoroutine(updater_coroutine);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (updater_coroutine != null)
+            {
+                StopCoroutine(updater_coroutine);
+                updater_coroutine = null;
+            }
+        }
+
         GameObject SetInitialSelection()
         {
             foreach (var selectable in GetComponentsInChildren<Selectable>())
@@ -339,8 +361,10 @@ namespace BaroqueUI
 
         IEnumerator CoSetInitialSelection()
         {
-            yield return new WaitForSecondsRealtime(0.1f);   /* doesn't work if done immediately :-( */
-            SetInitialSelection();
+            yield return new WaitForEndOfFrame();   /* doesn't work if done immediately :-( */
+            yield return new WaitForFixedUpdate();
+            if (this && isActiveAndEnabled)
+                SetInitialSelection();
         }
 
         static bool IsBetterRaycastResult(RaycastResult rr1, RaycastResult rr2)
@@ -750,6 +774,7 @@ namespace BaroqueUI
 
         public void Render()
         {
+            render_texture.DiscardContents();
             ortho_camera.Render();
         }
 
