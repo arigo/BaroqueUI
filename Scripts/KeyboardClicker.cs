@@ -124,7 +124,7 @@ namespace BaroqueUI
             internal Text text;
             internal float blink_end;
 
-            internal const float TOTAL_KEY_TIME = 0.5f;
+            internal const float TOTAL_KEY_TIME = 0.3f;
 
             internal bool Update(bool fallback = false)
             {
