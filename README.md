@@ -14,48 +14,59 @@ VR applications that are not meant to be games.
 Status
 ------
 
-Preliminary.  For Unity 5.5 and Unity 5.6 (other versions not tested but may
-work).  Developed for HTC Vive.
+Preliminary but usable.  APIs may change in the future, and more will be
+added, but always keeping in mind the ideas and goals outlined above.
+
+For Unity 5.5 and Unity 5.6 (other versions not tested but may work).
+Developed for HTC Vive.
+
+Main page and development version: https://github.com/arigo/BaroqueUI
+Contributions welcome!
 
 
 Demo
 ----
 
-This repo is meant to be checked out inside the ``Assets/`` directory of a
-Unity project.  This project should have SteamVR installed too, e.g. from
-the Assets Store.
+This repo is meant to be checked out inside the ``Assets/`` directory of
+a Unity project.  This project should have SteamVR installed too, e.g.
+from the Assets Store.  (On Unity 5.6, BaroqueUI will patch SteamVR at
+runtime to work around an issue that prevents SteamVR's controllers from
+showing up.)
 
-For example scenes, see the ``Examples/`` folder.  (Attribution: the scene
-layout comes from one of the example scenes in the VRTK project.)
+A demo scene with multiple interaction places is present in the
+``Examples/Scenes/`` folder.
 
 
 
 Programming overview
 --------------------
 
-All classes are in the BaroqueUI package (which you can access with
-``using BaroqueUI;``).  A few classes are components that install
-themselves automatically at runtime, but there is no need to add them 
-in the editor.
+All classes are in the BaroqueUI package, which you can access with
+``using BaroqueUI;``.  Some classes (but not all of them) are components
+that install themselves automatically at runtime, but there is no need
+to add them in the editor.
 
 In a few steps:
 
 * You drag and drop the ``Teleport Enabler`` prefab in the scene (from
   (``BaroqueUI/Prefabs``) if you want the default behavior of enabling
-  teleporting to move around.
+  teleporting to move around.  This is optional.
 
 * For each "interactable" object, you make sure it has got a collider
   and then attach a script to it.
 
-* In the ``Start()`` method, you call ``Controller.Register(this)``.
+* In the ``Start()`` method:
 
-* The BaroqueUI framework will call the ``OnXxx`` methods when the
-  controller interacts with the object.  See below for details.
+        var ct = Controller.Register(this);
+        ct.onTriggerDown += OnTriggerDown;
+
+* This minimal example will make BaroqueUI call your ``OnTriggerDown``
+  method whenever the trigger button is pressed.  You can use ctrl+tab
+  in Visual Studio to insert the method automatically with the correct
+  signature.  See below for details.
 
 * The BaroqueUI framework also provides classes to display a keyboard
   and interact with dialog-box-like displays.
-
-(...write more here...)
 
 
 
