@@ -31,6 +31,7 @@ public class MetalScript : MonoBehaviour
         ct.onTriggerDown += OnTriggerDown;
         ct.onTriggerUp += OnTriggerUp;
         ct.onGripDown += OnGripDown;
+        ct.onGripDrag += OnGripDrag;
         ct.onGripUp += OnGripUp;
     }
 
@@ -209,7 +210,7 @@ public class MetalScript : MonoBehaviour
         switch (sel)
         {
             case SelState.NotSelected: return Color.clear;
-            case SelState.Hovering:    return new Color(0.32f, 0.32f, 1, 0.5f);
+            case SelState.Hovering:    return new Color(1, 0, 0);//(0.32f, 0.32f, 1, 0.5f);
             default:                   return new Color(0.32f, 0.32f, 1);
             case SelState.Fixed:       return new Color(0.64f, 1, 0.32f);
         }
@@ -248,7 +249,7 @@ public class MetalScript : MonoBehaviour
         bool updated_vertices = false;
 
         for (int i = 0; i < sel_states.Length; i++)
-            if (sel_states[i] != SelState.Fixed)
+            if (sel_states[i] != SelState.NotSelected && sel_states[i] != SelState.Fixed)
                 sel_states[i] = SelState.NotSelected;
 
         foreach (var controller in controllers)
@@ -324,13 +325,7 @@ public class MetalScript : MonoBehaviour
                     }
                 }
             }
-            else if (local.is_gripping)
-            {
-                Vector3 pp = transform.TransformPoint(local.prev_position);
-                transform.position += controller.position - pp;
-                local.prev_position = transform.InverseTransformPoint(controller.position);
-            }
-            else
+            else if (!local.is_gripping)
             {
                 int[] selected = FindSelection(controller);
                 float scale;
@@ -462,6 +457,14 @@ public class MetalScript : MonoBehaviour
         local.org_position = local.prev_position = transform.InverseTransformPoint(controller.position);
 
         controller.SetPointer(pointerMove);
+    }
+
+    void OnGripDrag(Controller controller)
+    {
+        Local local = controller.GetAdditionalData(ref locals);
+        Vector3 pp = transform.TransformPoint(local.prev_position);
+        transform.position += controller.position - pp;
+        local.prev_position = transform.InverseTransformPoint(controller.position);
     }
 
     void OnGripUp(Controller controller)

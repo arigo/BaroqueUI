@@ -622,15 +622,14 @@ namespace BaroqueUI
                 Controller[] ctrls = Array.FindAll(controllers, (ctrl) => ctrl.overlapping_trackers.ContainsKey(ct));
                 ct.Call(ct.i_onControllersUpdate, ctrls);
             }
-            foreach (var ctrl in controllers)
-                ctrl.overlapping_trackers.Clear();
-
             foreach (var ct in called_controllers_update)
             {
                 if (!left_cts.ContainsKey(ct) && !right_cts.ContainsKey(ct))
                     ct.Call(ct.i_onControllersUpdate, new Controller[0]);
             }
             called_controllers_update = cts;
+            foreach (var ctrl in controllers)
+                ctrl.overlapping_trackers.Clear();
 
             Controller[] active_controllers = Array.FindAll(controllers, (ctrl) => ctrl.is_tracking_active);
             foreach (var gt in global_trackers.Values)
