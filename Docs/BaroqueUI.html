@@ -1,0 +1,193 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <meta http-equiv="Content-Style-Type" content="text/css" />
+  <meta name="generator" content="pandoc" />
+  <title></title>
+  <style type="text/css">code{white-space: pre;}</style>
+</head>
+<body>
+<h1 id="baroqueui">BaroqueUI</h1>
+<p>A Unity package giving a &quot;standard&quot; user interface for HTC Vive applications.</p>
+<p>This can be used for games, but is also meant to give standardization more typical of non-game desktop applications. Instead of giving a lot of options, it tries to promote one particular use of the controllers and the UI elements. The hope is that it should give a better basis for VR applications that are not meant to be games.</p>
+<h2 id="status">Status</h2>
+<p>Preliminary but usable. APIs may change in the future, and more will be added, but always keeping in mind the ideas and goals outlined above.</p>
+<p>For Unity 5.5 and Unity 5.6 (other versions not tested but may work). Developed for HTC Vive.</p>
+<h2 id="contact">Contact</h2>
+<p>Main page and development version: https://github.com/arigo/BaroqueUI Contributions welcome!</p>
+<p>Main developer: Armin Rigo <a href="mailto:arigo@tunes.org">arigo@tunes.org</a>.</p>
+<h2 id="demo">Demo</h2>
+<p>This repo is meant to be checked out inside the <code>Assets/</code> directory of a Unity project. This project should have SteamVR installed too, e.g. from the Assets Store. (On Unity 5.6, BaroqueUI will patch SteamVR at runtime to work around an issue that prevents SteamVR's controllers from showing up.)</p>
+<p>A demo scene with multiple interaction places is present in the <code>Examples/Scenes/</code> folder.</p>
+<h2 id="programming-overview">Programming overview</h2>
+<p>All classes are in the BaroqueUI package, which you can access with <code>using BaroqueUI;</code>. Some classes (but not all of them) are components that install themselves automatically at runtime, but there is no need to add them in the editor.</p>
+<p>In a few steps:</p>
+<ul>
+<li><p>You drag and drop the <code>Teleport Enabler</code> prefab in the scene (from (<code>BaroqueUI/Prefabs</code>) if you want the default behavior of enabling teleporting to move around. This is optional.</p></li>
+<li><p>For each &quot;interactable&quot; object, you make sure it has got a collider and then attach a script to it.</p></li>
+<li><p>In the <code>Start()</code> method:</p>
+<pre><code>var ct = Controller.Register(this);
+ct.onTriggerDown += OnTriggerDown;</code></pre></li>
+<li><p>This minimal example will make BaroqueUI call your <code>OnTriggerDown</code> method whenever the trigger button is pressed. You can use ctrl+tab in Visual Studio to insert the method automatically with the correct signature. See below for details.</p></li>
+<li><p>The BaroqueUI framework also provides classes to display a keyboard and interact with dialog-box-like displays.</p></li>
+</ul>
+<h2 id="baroque">Baroque</h2>
+<p>The class <code>Baroque</code> contains only static methods. The most important ones are:</p>
+<ul>
+<li><p><code>GetControllers()</code> returns an array of <code>Controller</code> objects. This static method is also available on the <code>Controller</code> class. See below.</p></li>
+<li><p><code>GetHeadTransform()</code> returns the Transform of the headset.</p></li>
+<li><p><code>FindPossiblyInactive(string path_in_scene)</code>: finds an object by path in the scene (use <code>/</code> to return subobjects). This function will also return objects that are disabled, which is what you need to find a dialog &quot;prefab&quot; stored in the scene.</p></li>
+</ul>
+<h2 id="controller">Controller</h2>
+<p><code>Controller</code> is a component that installs itself on the <code>Controller (left)</code> and <code>Controller (right)</code> objects in <code>SteamVR</code>. The general public interface is:</p>
+<pre><code>    public Vector3 position;
+    public Quaternion rotation;
+    public Vector3 forward;
+    public Vector3 right;
+    public Vector3 up;
+    public Vector3 velocity;
+    public Vector3 angularVelocity;</code></pre>
+<p>Returns the location of the controller. This is the position and velocity of a point that is slightly in front of the controller, which plays the role of &quot;the position of the mouse pointer&quot; in BaroqueUI.</p>
+<pre><code>    public bool triggerPressed;    // bottom of the controller
+    public float triggerVariablePressure;   // between 0 and 1
+    public bool touchpadPressed;   // big round area
+    public bool gripPressed;       // side buttons
+    public bool menuPressed;       // top small button
+    public bool GetButton(EControllerButton btn);</code></pre>
+<p>Check whether individual buttons are pressed or not.</p>
+<pre><code>    public bool touchpadTouched;
+    public Vector2 touchpadPosition;</code></pre>
+<p>Check whether the finger is touching the touchpad and where (X and Y coordinates between -1 and 1).</p>
+<pre><code>    public MonoBehaviour CurrentHoverTracker();</code></pre>
+<p>Return which &quot;tracker&quot; (see below) the controller is currently over.</p>
+<pre><code>    public void GrabHover(bool active);</code></pre>
+<p>Locks or unlocks the current hover tracker. As long as it is locked, the controller cannot &quot;leave&quot;. It will be considered to be inside the zone of that same tracker until at least <code>GrabHover(false)</code> is called.</p>
+<pre><code>    public void HapticPulse(int durationMicroSec = 500);</code></pre>
+<p>Send a haptic pulse to the controller.</p>
+<pre><code>    public Transform SetPointer(string pointer_name);
+    public Transform SetPointer(GameObject prefab);</code></pre>
+<p>Set the &quot;mouse pointer&quot;. This is a small object that is visible in front of the controller, centered at the point that is at <code>Controller.position</code>. If given by name, it must be a GameObject from a <code>Resources</code> directory, in a subdirectory <code>Pointers</code>. Call with an empty string to remove the pointer. The result is the transform of the pointer object (or null).</p>
+<pre><code>    public void SetScrollWheel(bool visible);</code></pre>
+<p>Show or hide the scroll wheel on the trackpad.</p>
+<pre><code>    public void SetControllerHints(string trigger = null, string grip = null,
+        string touchpadTouched = null, string touchpadPressed = null, string menu = null);</code></pre>
+<p>Set or unset controller hints. The hints are attached to particular buttons and should be small strings describing what the button does. The hints are only shown if the controller is not moving much, like typical for 2D mouse pointer hints.</p>
+<pre><code>    public int index;</code></pre>
+<p>The index of this controller: 0 for left, or 1 for right. This is the index inside the <code>Controller.GetControllers()</code> array.</p>
+<pre><code>    public static Controller GetController(int index);
+    public static Controller[] GetControllers();</code></pre>
+<p>Return the controller by index, or the list of all controllers (same as <code>Baroque.GetControllers()</code>).</p>
+<pre><code>    public T GetAdditionalData&lt;T&gt;(ref T[] locals) where T: new();</code></pre>
+<p>Attach additional local, controller-specific data. To use this, you pass by reference an array of some type <code>T</code>, which should be a small local class. The array does not need to be initialized; this method does it for you. It returns the <code>index</code>th item of the array, instantiating it if it is still null.</p>
+<h2 id="controller-hover-trackers">Controller Hover trackers</h2>
+<p>For every object in the scene that you want to interact with, you need a script that is registered with the controllers. We call the script a &quot;tracker&quot;. Typically, registration is done in <code>Start()</code> after setting up the MonoBehaviour:</p>
+<pre><code>    var ct = Controller.HoverTracker(this);
+    ct.onEnter += ...;
+    ct.onLeave += ...;
+    ct.onTriggerDown += ...;</code></pre>
+<p>You also need to make sure the GameObject or its children contain at least one collider, typically of the &quot;trigger&quot; kind. This is used to know the maximal interaction area.</p>
+<p>The fields of the 'ct' object are mostly C# events, which you set with <code>+=</code>. We will discuss them in the following sections. A few non-event fields first:</p>
+<pre><code>    ct.computePriority = ...;
+    ct.SetPriority(float value)
+    ct.SetPriorityFromDistance(float maximum);</code></pre>
+<p>The &quot;priority&quot; is used to pick trackers in case there are overlapping colliders. The highest &quot;priority&quot; value is choosen first. The priority can be computed by assigning a delegate to <code>computePriority</code>, taking a controller argument and returning a float. Or, use <code>SetPriority()</code> to give the tracker a constant priority; or <code>SetPriorityFromDistance()</code> to have it compute the priority dynamically from the distance to the collider. In the last case, the priority returned is equal to <code>maximum</code> minus the distance. The default computation method is <code>SetPriorityFromDistance(0)</code>, which returns a (usually small) negative number.</p>
+<p>Note that the distance is computed to a point in the &quot;core&quot; of the collider, not the surface. For cubic BoxColliders, for example, it is the center. See the details in <code>Collider.DistanceToColliderCore()</code>.</p>
+<p>If the returned priority is <code>float.NegativeInfinity</code>, then the controller is considered completely outside the tracker.</p>
+<pre><code>    ct.isConcurrent</code></pre>
+<p>When this is <code>false</code> (the default), then BaroqueUI takes care for you that only one controller can be interacting with the given tracker, not both at the same time. It simplifies the logic you need and avoids bugs due to a rarely-tested use case. If you say <code>ct.isConcurrent = true</code>, then you must handle the case that events might be called for both controllers concurrently.</p>
+<h2 id="global-trackers">Global trackers</h2>
+<p>In addition to &quot;Hover trackers&quot; described above, you can also register global trackers. These receive events not otherwise handled. These trackers are always tried after the hover trackers. They can also have priorities to differenciate among them. These global trackers should be installed on GameObjects with no colliders, and the default priority is simply 0.</p>
+<p>They are installed with:</p>
+<pre><code>    var gt = Controller.GlobalTracker(this);</code></pre>
+<h2 id="event-sets">Event sets</h2>
+<p>Controller events are organized in sets which can be handled or not (by implementing or not the corresponding methods).</p>
+<p>The sets are: hovering; clicking the trigger; clicking the grip button; interacting with the touchpad; and clicking the menu button.</p>
+<p>Each event is sent to the first tracker that handles the set, in some order. The order is mainly defined by the priority of each tracker, with some exceptions noted below.</p>
+<h2 id="oncontrollersupdate">OnControllersUpdate</h2>
+<p>The special method <code>OnControllersUpdate</code> (note the plural) is called on all trackers that define it, either when the tracker touches one of the controllers, or when it used to touch it just before. It is passed as argument an array of controllers that are touching now. (That means that after both controllers leave a tracker, <code>OnControllersUpdate</code> is called once more with an empty array.)</p>
+<h2 id="hovering-event-set">Hovering event set</h2>
+<p>Methods <code>OnEnter</code>, <code>OnMoveOver</code>, <code>OnLeave</code>. Each one takes a Controller as argument (like all remaining OnXxx methods). Called when the controller enters the tracker's zone, stays in it, and leaves it.</p>
+<p>If this event set is implemented, the other event sets below are only called between <code>OnEnterXxx</code> and <code>OnLeave</code>.</p>
+<p>If this event set is not implemented and the tracker's GameObject has no trigger, then it is a global tracker. It can handle the other sets of events, but in the priority queue, it is put behind all non-global trackers, and so will only receive events from sets not handled by non-global trackers.</p>
+<h2 id="clicking-event-sets">Clicking event sets</h2>
+<p>If the tracker does not implement the hovering event set, then we use the usual priority rules for the event sets below. If the tracker does implement the hovering event set, then the following event sets are given the topmost priority as long as this tracker is the current hovering tracker, and are never called if this tracker is not the current hovering tracker.</p>
+<p>Trigger button (below the controller): <code>OnTriggerDown</code>, <code>OnTriggerDrag</code>, <code>OnTriggerUp</code>. Between <code>OnTriggerDown</code> and <code>OnTriggerUp</code>, the general <code>OnMoveOver</code> event is not sent.</p>
+<p>Grip button (on the sides): <code>OnGripDown</code>, <code>OnGripDrag</code>, <code>OnGripUp</code>. Note that BaroqueUI detects when both grip and trigger is pressed and ignores the second one. Between <code>OnGripDown</code> and <code>OnGripUp</code>, the general <code>OnMoveOver</code> event is not sent.</p>
+<p>Touchpad (big round area): see below.</p>
+<p>Menu button (small button above the touchpad): <code>OnMenuClick</code>.</p>
+<h2 id="touchpad">Touchpad</h2>
+<p>The touchpad has got a more complicated event set to handle the various ways it can be interacted with. We can touch the touchpad. Once touched, we can actually press the touchpad, or not. It is also possible to move the finger on the touchpad.</p>
+<p>So far, BaroqueUI will interpret all this as one action among three possible ones:</p>
+<ol style="list-style-type: decimal">
+<li><p>If you press the touchpad, you get <code>OnTouchPressDown</code>, <code>OnTouchPressDrag</code> and <code>OnTouchPressUp</code>, which work like the other <code>OnXxxDown/OnXxxDrag/OnXxxUp</code> events.</p></li>
+<li><p>If you touch the touchpad and immediately move your finger, you get <code>OnTouchScroll</code> events.</p></li>
+<li><p>Otherwise, if you touch the touchpad you get <code>OnTouchDown</code>, <code>OnTouchDrag</code> and <code>OnTouchUp</code> events.</p></li>
+</ol>
+<p>Only one of these actions is possible at a given time. The touchpad works in BaroqueUI like a state machine with up to 7 states, depending on which methods are actually implemented. The full state machine is detailled below. Some states don't exist if some actions are not implemented. To get the most &quot;uncooked&quot; events, implement only action 3 and poll inside <code>OnTouchDrag</code> for the other conditions.</p>
+<pre><code>&lt;outside the tracker&gt; -----------------------.
+     |                                       | enter when touching
+     | enter when not touching               |
+     |                                       |    .---------------------.
+     |                                       v    v                     |
+     | .----------------------------- &lt;dead touching&gt;                   |
+     v v        untouching     `\          |   |  \                     |
+&lt;released&gt;                      |          |   |  &lt;out&gt;                 |
+     |    \                     |          |   |            un-pressing |
+     |     &lt;out&gt;            .--------------&#39;   &#39;-------.                |
+     |                      |   |                      |                |
+     | touching             |   |                      |                |
+     v                      |   |                      |                |
+&lt;small delay&gt; ----------------------------------------\|                |
+     | |                    |   |                      +                |
+     | `-------------------\|   &#39;---------.   .-------\| pressing       |
+     |                      +              \ /         +                |
+     |        moving finger |               |          v                |
+     |                      |               |       &lt;action 1&gt; ---------&#39;
+     | default              v               |
+     v                   &lt;action 2&gt;         |
+ &lt;action 3&gt;                 |               |
+     |                      \.              |
+     &#39;--------------------------------------&#39;</code></pre>
+<p>The &quot;dead touching&quot; state is if we have the touchpad touched but didn't actually start touching it just now and have no other state for it.</p>
+<p>The &quot;small delay&quot; state selects between the three action states. There is no delay if only one action state is actually implemented in the tracker. The &quot;default&quot; path is followed if the small delay elapses, if we move the controller enough in space, or if we &quot;press&quot; and there is no &quot;action 1&quot; implemented; or if we untouch the touchpad quickly (in the last case, it will leave &quot;action 3&quot; immediately afterwards, but that's still registered as a tap).</p>
+<p>If &quot;action 1&quot; is not implemented, pressing doesn't cause state changes. If &quot;action 2&quot; is not implemented, moving the finger doesn't cause state changes.</p>
+<h2 id="grabbableobject">GrabbableObject</h2>
+<p>This is meant as an example of tracker script that you can just drop into any GameObject with a collider. The object can then be moved around by pressing the trigger button. See its source code as an example of using the <code>OnXxx</code> methods.</p>
+<h2 id="dialog">Dialog</h2>
+<p>For dialog boxes. Typically, you'd make the dialog box by creating a Unity <code>Canvas</code> component and filling it with UI widgets like <code>InputField</code> or <code>Text</code>. To make the Canvas usable from BaroqueUI, you need to change its &quot;Render Mode&quot; to &quot;World Space&quot; and stick an extra <code>Dialog</code> component in the Canvas.</p>
+<p>There are two kinds of dialogs: &quot;pop-ups&quot; show up when the user does some action to request it; and &quot;pre-positioned&quot; dialogs which are part of the scene in the first place. This is the meaning of the <code>alreadyPositioned</code> check box in the inspector for <code>Dialog</code>.</p>
+<pre><code>    public Dialog MakePopup(Controller controller, GameObject requester = null)</code></pre>
+<p>This method of Dialog objects is used for pop-ups. It duplicates the GameObject associated with the Dialog, and position it appropriately for the controller. If 'requester' is not null, we use that as the &quot;attached&quot; object; otherwise, we use the original Dialog object directly. The &quot;attached&quot; object is only used when asking for a pop-up twice: if you ask again for a pop-up with the same attached object, then the second time is interpreted as a request to close it, and the MakePopup method will return <code>null</code> in this case.</p>
+<p>Note that when you make them in Unity, Canvases are extremely large when compared with the rest of the scene. You can ignore that for dialogs that are not <code>alreadyPositioned</code>: they will be scaled down automatically by MakePopup(). For the dialogs that are <code>alreadyPositioned</code>, you need to scale them down while positioning them in the first place.</p>
+<p>Dialog objects have these additional methods to read or write the value displayed by UI widgets:</p>
+<pre><code>    public T Get&lt;T&gt;(string widget_name);
+    public void Set&lt;T&gt;(string widget_name, T value,
+                       UnityAction&lt;T&gt; onChange = null);</code></pre>
+<p>Reads or writes the value in the widget with the give name (the name of the corresponding GameObject). The type <code>T</code> must be of a type appropriate for the widget type. Currently supported:</p>
+<ul>
+<li>Text: reads or writes a string</li>
+<li>InputField: reads or writes a string</li>
+<li>Slider: reads or writes a float</li>
+<li>Toggle (checkboxes): reads or writes a bool</li>
+<li>Dropdown: reads or writes an integer (the index of the selected item)</li>
+</ul>
+<p>The optional <code>onChange</code> function is called when the value is changed by the user. Note that the next call to <code>Set&lt;T&gt;()</code> removes the previously set <code>onChange</code> callback; it must be specified in all calls to <code>Set&lt;T&gt;()</code> to remain in effect. If given as <code>null</code>, it is simply removed.</p>
+<p>For pop-up dialogs, you need to call <code>Set&lt;T&gt;()</code> on the copy returned by <code>MakePopup()</code>.</p>
+<p>For buttons, you need this variant, with no value and an argument-less callback:</p>
+<pre><code>    public void SetClick(string clickable_widget_name, UnityAction onClick);</code></pre>
+<p>For dropdown lists that you need to populate from the script (as opposed to having it pre-populated in the inspector), use this method in addition to <code>Set&lt;int&gt;()</code>:</p>
+<pre><code>    public void SetChoices(string choice_widget_name, List&lt;string&gt; choices);</code></pre>
+<h2 id="menu">Menu</h2>
+<p>For menus. Usage is:</p>
+<pre><code>    var menu = new Menu {
+        { &quot;Red&quot;, () =&gt; mat.color = Color.red},
+        { &quot;Green&quot;, () =&gt; mat.color = Color.green},
+        { &quot;Blue&quot;, () =&gt; mat.color = new Color(0.25f, 0.35f, 1)},
+        { &quot;White&quot;, () =&gt; mat.color = Color.white},
+    };
+    menu.MakePopup(controller, gameObject);</code></pre>
+<h2 id="keyboardclicker-keyboardvrinput">KeyboardClicker, KeyboardVRInput</h2>
+<p>For keyboards. Mostly, it should show up automatically on InputFields from dialog boxes. To add a keyboard manually into the scene, look into the Prefabs.</p>
+</body>
+</html>
