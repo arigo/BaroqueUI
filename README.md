@@ -14,8 +14,8 @@ VR applications that are not meant to be games.
 Status
 ------
 
-Preliminary.  For Unity 5.5 (other versions not tested but may work).
-Developed for HTC Vive.
+Preliminary.  For Unity 5.5 and Unity 5.6 (other versions not tested but may
+work).  Developed for HTC Vive.
 
 
 Demo
