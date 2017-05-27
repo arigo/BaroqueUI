@@ -20,8 +20,14 @@ added, but always keeping in mind the ideas and goals outlined above.
 For Unity 5.5 and Unity 5.6 (other versions not tested but may work).
 Developed for HTC Vive.
 
+
+Contact
+-------
+
 Main page and development version: https://github.com/arigo/BaroqueUI
 Contributions welcome!
+
+Main developer: Armin Rigo <arigo@tunes.org>.
 
 
 Demo
