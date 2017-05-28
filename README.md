@@ -25,9 +25,10 @@ Contact
 -------
 
 Main page and development version: https://github.com/arigo/BaroqueUI
-Contributions welcome!
 
 Main developer: Armin Rigo <arigo@tunes.org>.
+
+Contributions welcome!
 
 
 Demo

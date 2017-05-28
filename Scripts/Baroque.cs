@@ -35,7 +35,7 @@ namespace BaroqueUI
 
         static public Controller[] GetControllers()
         {
-            EnsureStarted();
+            _EnsureStarted();
             return controllers;
         }
 
@@ -121,7 +121,7 @@ namespace BaroqueUI
             Controller ctrl = go.GetComponent<Controller>();
             if (ctrl == null)
                 ctrl = go.AddComponent<Controller>();
-            ctrl.Initialize(index);
+            ctrl._Initialize(index);
             controllers[index] = ctrl;
             return go;
         }
@@ -135,7 +135,7 @@ namespace BaroqueUI
                 if (GetHeadTransform().GetComponent<SteamVR_UpdatePoses>() == null)
                     GetHeadTransform().gameObject.AddComponent<SteamVR_UpdatePoses>();
 #endif
-                Controller.InitControllers();
+                Controller._InitControllers();
                 controllers = new Controller[2];
                 left_controller = InitController(GetSteamVRManager().left, 0);
                 right_controller = InitController(GetSteamVRManager().right, 1);
@@ -157,7 +157,7 @@ namespace BaroqueUI
             }
         }
 
-        static internal void EnsureStarted()
+        static internal void _EnsureStarted()
         {
             if (left_controller == null || right_controller == null)   // includes 'has been destroyed'
                 InitControllers();
@@ -168,13 +168,13 @@ namespace BaroqueUI
             Controller[] controllers = GetControllers();
             RemoveDrawings();
             if (controllers.Length > 0)
-                Controller.UpdateAllControllers(controllers);
+                Controller._UpdateAllControllers(controllers);
         }
 
 
         /*********************************************************************************************/
 
-        static internal void InitTests()
+        static internal void _InitTests()
         {
             controllersReady = false;
             globallyReady = true;

@@ -46,7 +46,7 @@ namespace BaroqueUI
 
         public Dialog MakePopup(Controller controller, GameObject requester = null)
         {
-            return Dialog.ShouldShowPopup(this, requester) ? CreateDialog().DoShowPopup(controller) : null;
+            return Dialog.MakePopup(this, CreateDialog, controller, requester);
         }
 
         Dialog CreateDialog()

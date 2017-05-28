@@ -10,7 +10,7 @@ namespace BaroqueUI
     public delegate void ControllersUpdateEvent(Controller[] controllers);
     public delegate void ControllerVec2Event(Controller controller, Vector2 relative_pos);
 
-    internal enum EEventSet
+    enum EEventSet
     {
         Hover = 0x01,
         Trigger = 0x02,
@@ -26,11 +26,13 @@ namespace BaroqueUI
     {
         public readonly MonoBehaviour tracker;
 
-        internal readonly int creation_order;
-        internal EEventSet event_sets;   /* bitmask */
-        private static int NUMBERING = 0;
+        readonly int creation_order;
+        EEventSet event_sets;   /* bitmask */
+        static int NUMBERING = 0;
 
-        internal ControllerTracker(MonoBehaviour tracker, bool is_hover)
+        internal EEventSet _event_sets { get { return event_sets; } }
+
+        public ControllerTracker(MonoBehaviour tracker, bool is_hover)
         {
             this.tracker = tracker;
             creation_order = ++NUMBERING;
@@ -65,146 +67,149 @@ namespace BaroqueUI
             get { return (event_sets & EEventSet.IsConcurrent) != 0; }
             set { if (value) event_sets |= EEventSet.IsConcurrent; else event_sets &= ~EEventSet.IsConcurrent; }
         }
+        public bool isActiveAndEnabled {
+            get { return tracker && tracker.isActiveAndEnabled; }
+        }
 
-        internal ControllersUpdateEvent i_onControllersUpdate;
-        internal ControllerEvent i_onEnter;
-        internal ControllerEvent i_onMoveOver;
-        internal ControllerEvent i_onLeave;
-        internal ControllerEvent i_onTriggerDown;
-        internal ControllerEvent i_onTriggerDrag;
-        internal ControllerEvent i_onTriggerUp;
-        internal ControllerEvent i_onGripDown;
-        internal ControllerEvent i_onGripDrag;
-        internal ControllerEvent i_onGripUp;
-        internal ControllerEvent i_onMenuClick;
-        internal ControllerEvent i_onTouchPressDown;
-        internal ControllerEvent i_onTouchPressDrag;
-        internal ControllerEvent i_onTouchPressUp;
-        internal ControllerVec2Event i_onTouchScroll;
-        internal ControllerEvent i_onTouchDown;
-        internal ControllerEvent i_onTouchDrag;
-        internal ControllerEvent i_onTouchUp;
+        internal ControllersUpdateEvent _i_onControllersUpdate;
+        internal ControllerEvent _i_onEnter;
+        internal ControllerEvent _i_onMoveOver;
+        internal ControllerEvent _i_onLeave;
+        internal ControllerEvent _i_onTriggerDown;
+        internal ControllerEvent _i_onTriggerDrag;
+        internal ControllerEvent _i_onTriggerUp;
+        internal ControllerEvent _i_onGripDown;
+        internal ControllerEvent _i_onGripDrag;
+        internal ControllerEvent _i_onGripUp;
+        internal ControllerEvent _i_onMenuClick;
+        internal ControllerEvent _i_onTouchPressDown;
+        internal ControllerEvent _i_onTouchPressDrag;
+        internal ControllerEvent _i_onTouchPressUp;
+        internal ControllerVec2Event _i_onTouchScroll;
+        internal ControllerEvent _i_onTouchDown;
+        internal ControllerEvent _i_onTouchDrag;
+        internal ControllerEvent _i_onTouchUp;
 
         public event ControllersUpdateEvent onControllersUpdate {
-            add { i_onControllersUpdate += value; }
-            remove { i_onControllersUpdate -= value; }
+            add { _i_onControllersUpdate += value; }
+            remove { _i_onControllersUpdate -= value; }
         }
 
         public event ControllerEvent onEnter {
-            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); i_onEnter += value; }
-            remove { i_onEnter -= value; }
+            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); _i_onEnter += value; }
+            remove { _i_onEnter -= value; }
         }
         public event ControllerEvent onMoveOver {
-            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); i_onMoveOver += value; }
-            remove { i_onMoveOver -= value; }
+            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); _i_onMoveOver += value; }
+            remove { _i_onMoveOver -= value; }
         }
         public event ControllerEvent onLeave
         {
-            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); i_onLeave += value; }
-            remove { i_onLeave -= value; }
+            add { Debug.Assert((event_sets & EEventSet.Hover) != 0); _i_onLeave += value; }
+            remove { _i_onLeave -= value; }
         }
 
         public event ControllerEvent onTriggerDown
         {
-            add { i_onTriggerDown += value; event_sets |= EEventSet.Trigger; }
-            remove { i_onTriggerDown -= value; check_Trigger(); }
+            add { _i_onTriggerDown += value; event_sets |= EEventSet.Trigger; }
+            remove { _i_onTriggerDown -= value; check_Trigger(); }
         }
         public event ControllerEvent onTriggerDrag
         {
-            add { i_onTriggerDrag += value; event_sets |= EEventSet.Trigger; }
-            remove { i_onTriggerDrag -= value; check_Trigger(); }
+            add { _i_onTriggerDrag += value; event_sets |= EEventSet.Trigger; }
+            remove { _i_onTriggerDrag -= value; check_Trigger(); }
         }
         public event ControllerEvent onTriggerUp
         {
-            add { i_onTriggerUp += value; event_sets |= EEventSet.Trigger; }
-            remove { i_onTriggerUp -= value; check_Trigger(); }
+            add { _i_onTriggerUp += value; event_sets |= EEventSet.Trigger; }
+            remove { _i_onTriggerUp -= value; check_Trigger(); }
         }
         void check_Trigger()
         {
-            if (i_onTriggerDown == null && i_onTriggerDrag == null && i_onTriggerUp == null)
+            if (_i_onTriggerDown == null && _i_onTriggerDrag == null && _i_onTriggerUp == null)
                 event_sets &= ~EEventSet.Trigger;
         }
 
         public event ControllerEvent onGripDown
         {
-            add { i_onGripDown += value; event_sets |= EEventSet.Grip; }
-            remove { i_onGripDown -= value; check_Grip(); }
+            add { _i_onGripDown += value; event_sets |= EEventSet.Grip; }
+            remove { _i_onGripDown -= value; check_Grip(); }
         }
         public event ControllerEvent onGripDrag
         {
-            add { i_onGripDrag += value; event_sets |= EEventSet.Grip; }
-            remove { i_onGripDrag -= value; check_Grip(); }
+            add { _i_onGripDrag += value; event_sets |= EEventSet.Grip; }
+            remove { _i_onGripDrag -= value; check_Grip(); }
         }
         public event ControllerEvent onGripUp
         {
-            add { i_onGripUp += value; event_sets |= EEventSet.Grip; }
-            remove { i_onGripUp -= value; check_Grip(); }
+            add { _i_onGripUp += value; event_sets |= EEventSet.Grip; }
+            remove { _i_onGripUp -= value; check_Grip(); }
         }
         void check_Grip()
         {
-            if (i_onGripDown == null && i_onGripDrag == null && i_onGripUp == null)
+            if (_i_onGripDown == null && _i_onGripDrag == null && _i_onGripUp == null)
                 event_sets &= ~EEventSet.Grip;
         }
 
         public event ControllerEvent onMenuClick
         {
-            add { i_onMenuClick += value; event_sets |= EEventSet.Menu; }
-            remove { i_onMenuClick -= value; check_Menu(); }
+            add { _i_onMenuClick += value; event_sets |= EEventSet.Menu; }
+            remove { _i_onMenuClick -= value; check_Menu(); }
         }
         void check_Menu()
         {
-            if (i_onMenuClick == null)
+            if (_i_onMenuClick == null)
                 event_sets &= ~EEventSet.Menu;
         }
 
         public event ControllerEvent onTouchPressDown
         {
-            add { i_onTouchPressDown += value; event_sets |= EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressDown -= value; check_Touchpad1(); }
+            add { _i_onTouchPressDown += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { _i_onTouchPressDown -= value; check_Touchpad1(); }
         }
         public event ControllerEvent onTouchPressDrag
         {
-            add { i_onTouchPressDrag += value; event_sets |= EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressDrag -= value; check_Touchpad1(); }
+            add { _i_onTouchPressDrag += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { _i_onTouchPressDrag -= value; check_Touchpad1(); }
         }
         public event ControllerEvent onTouchPressUp
         {
-            add { i_onTouchPressUp += value; event_sets |= EEventSet.TouchpadAction1; }
-            remove { i_onTouchPressUp -= value; check_Touchpad1(); }
+            add { _i_onTouchPressUp += value; event_sets |= EEventSet.TouchpadAction1; }
+            remove { _i_onTouchPressUp -= value; check_Touchpad1(); }
         }
         public event ControllerVec2Event onTouchScroll
         {
-            add { i_onTouchScroll += value; event_sets |= EEventSet.TouchpadAction2; }
-            remove { i_onTouchScroll -= value; check_Touchpad2(); }
+            add { _i_onTouchScroll += value; event_sets |= EEventSet.TouchpadAction2; }
+            remove { _i_onTouchScroll -= value; check_Touchpad2(); }
         }
         public event ControllerEvent onTouchDown
         {
-            add { i_onTouchDown += value; event_sets |= EEventSet.TouchpadAction3; }
-            remove { i_onTouchDown -= value; check_Touchpad3(); }
+            add { _i_onTouchDown += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { _i_onTouchDown -= value; check_Touchpad3(); }
         }
         public event ControllerEvent onTouchDrag
         {
-            add { i_onTouchDrag += value; event_sets |= EEventSet.TouchpadAction3; }
-            remove { i_onTouchDrag -= value; check_Touchpad3(); }
+            add { _i_onTouchDrag += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { _i_onTouchDrag -= value; check_Touchpad3(); }
         }
         public event ControllerEvent onTouchUp
         {
-            add { i_onTouchUp += value; event_sets |= EEventSet.TouchpadAction3; }
-            remove { i_onTouchUp -= value; check_Touchpad3(); }
+            add { _i_onTouchUp += value; event_sets |= EEventSet.TouchpadAction3; }
+            remove { _i_onTouchUp -= value; check_Touchpad3(); }
         }
         void check_Touchpad1()
         {
-            if (i_onTouchPressDown == null && i_onTouchPressDrag == null && i_onTouchPressUp == null)
+            if (_i_onTouchPressDown == null && _i_onTouchPressDrag == null && _i_onTouchPressUp == null)
                 event_sets &= ~EEventSet.TouchpadAction1;
         }
         void check_Touchpad2()
         {
-            if (i_onTouchScroll == null)
+            if (_i_onTouchScroll == null)
                 event_sets &= ~EEventSet.TouchpadAction2;
         }
         void check_Touchpad3()
         {
-            if (i_onTouchDown == null && i_onTouchDrag == null && i_onTouchUp == null)
+            if (_i_onTouchDown == null && _i_onTouchDrag == null && _i_onTouchUp == null)
                 event_sets &= ~EEventSet.TouchpadAction3;
         }
 
@@ -218,24 +223,19 @@ namespace BaroqueUI
             }
         }
 
-        internal bool NotDead()
+        internal void _Call(ControllersUpdateEvent ev, Controller[] controllers)
         {
-            return tracker && tracker.isActiveAndEnabled;
-        }
-
-        internal void Call(ControllersUpdateEvent ev, Controller[] controllers)
-        {
-            if (ev != null && NotDead())
+            if (ev != null && isActiveAndEnabled)
                 try { ev(controllers); } catch (Exception e) { Report(e); }
         }
-        internal void Call(ControllerEvent ev, Controller controller)
+        internal void _Call(ControllerEvent ev, Controller controller)
         {
-            if (ev != null && NotDead())
+            if (ev != null && isActiveAndEnabled)
                 try { ev(controller); } catch (Exception e) { Report(e); }
         }
-        internal void Call(ControllerVec2Event ev, Controller controller, Vector2 pos)
+        internal void _Call(ControllerVec2Event ev, Controller controller, Vector2 pos)
         {
-            if (ev != null && NotDead())
+            if (ev != null && isActiveAndEnabled)
                 try { ev(controller, pos); } catch (Exception e) { Report(e); }
         }
 
