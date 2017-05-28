@@ -75,13 +75,13 @@ namespace BaroqueUI
 
         public static void DrawLine(Vector3 from, Vector3 to)
         {
-            if (!Application.isEditor)
+            if (Application.isPlaying)
                 MakeLine(from, to);
         }
 
         public static void DrawLine(Vector3 from, Vector3 to, Color color)
         {
-            if (!Application.isEditor)
+            if (Application.isPlaying)
             {
                 GameObject go = MakeLine(from, to);
                 go.GetComponent<Renderer>().material.color = color;

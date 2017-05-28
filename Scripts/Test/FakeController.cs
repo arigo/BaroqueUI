@@ -47,6 +47,7 @@ namespace BaroqueUI
         static void Setup()
         {
             Debug.Assert(Application.isEditor);
+            Debug.Assert(!Application.isPlaying);
             Application.logMessageReceived += HandleLog;
 
             CleanControllers();

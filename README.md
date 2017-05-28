@@ -68,9 +68,9 @@ In a few steps:
         ct.onTriggerDown += OnTriggerDown;
 
 * This minimal example will make BaroqueUI call your ``OnTriggerDown``
-  method whenever the trigger button is pressed.  You can use ctrl+tab
-  in Visual Studio to insert the method automatically with the correct
-  signature.  See below for details.
+  method whenever the trigger button is pressed.  You can use "tab" or
+  "ctrl+dot" in Visual Studio to insert the method automatically with
+  the correct signature.  See below for details.
 
 * The BaroqueUI framework also provides classes to display a keyboard
   and interact with dialog-box-like displays.

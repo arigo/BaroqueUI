@@ -63,7 +63,7 @@ namespace BaroqueUI
 
         public void HapticPulse(int durationMicroSec = 500)
         {
-            if (!Application.isEditor)
+            if (Application.isPlaying)
                 SteamVR_Controller.Input((int)trackedObject.index).TriggerHapticPulse((ushort)durationMicroSec);
         }
 
@@ -240,7 +240,7 @@ namespace BaroqueUI
                 core = coll.transform.TransformPoint(coll.bounds.center);
             }
 
-            Baroque.DrawLine(core, position, Color.cyan);
+            //Baroque.DrawLine(core, position, Color.cyan);
 
             return Vector3.Distance(core, position);
         }
