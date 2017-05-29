@@ -9,7 +9,11 @@ namespace BaroqueUI
     public class GrabbableObject : MonoBehaviour
     {
         public Color highlightColor = new Color(1, 0, 0, 0.667f);
-        public Color dragColor = new Color(1, 0, 0, 0.333f);
+        public Color dragColor = new Color(1, 0.4f, 0, 0.333f);
+
+        [Tooltip("If checked, use a display outline instead of changing the material color.  "
+               + "Right now, only works for Renderers that have a single material to start with.")]
+        public bool showOutline = true;
 
         Vector3 origin_position;
         Quaternion origin_rotation;
@@ -93,17 +97,24 @@ namespace BaroqueUI
             return result;
         }
 
+        static Material silhouette_mat;
+
         public void ChangeColor(Color color)
         {
             /* To change the color of the grabbed object, we hack around and change all renderer's
-             * "_Color" property.
+             * "_Color" property (showOutline = false) or add a Silhouette material (showOutline = true)
              */
             if (color == Color.clear)
             {
                 if (original_materials != null)
                 {
                     foreach (var kv in original_materials)
-                        kv.Key.sharedMaterials = kv.Value;
+                    {
+                        if (kv.Value == null)   /* showOutline */
+                            kv.Key.sharedMaterials = new Material[] { kv.Key.sharedMaterial };
+                        else
+                            kv.Key.sharedMaterials = kv.Value;
+                    }
                     original_materials = null;
                 }
             }
@@ -137,17 +148,36 @@ namespace BaroqueUI
                     }
                     else
                     {
-                        org_mats = original_materials[rend] = rend.sharedMaterials;
-
-                        Material[] new_mats = new Material[org_mats.Length];
-                        for (int i = 0; i < new_mats.Length; i++)
-                            new_mats[i] = Instantiate<Material>(org_mats[i]);
-                        rend.sharedMaterials = new_mats;
+                        org_mats = rend.sharedMaterials;
+                        if (showOutline && org_mats.Length == 1)
+                            org_mats = null;
+                        else
+                        {
+                            Material[] new_mats = new Material[org_mats.Length];
+                            for (int i = 0; i < new_mats.Length; i++)
+                                new_mats[i] = Instantiate<Material>(org_mats[i]);
+                            rend.sharedMaterials = new_mats;
+                        }
+                        original_materials[rend] = org_mats;
                     }
 
                     Material[] mats = rend.sharedMaterials;
-                    for (int i = 0; i < mats.Length; i++)
-                        mats[i].SetColor("_Color", ColorCombine(org_mats[i].GetColor("_Color"), color));
+                    if (org_mats == null)
+                    {
+                        /* showOutline */
+                        if (silhouette_mat == null)
+                            silhouette_mat = Resources.Load<Material>("BaroqueUI/Silhouette Material");
+                        Material sil1 = Instantiate<Material>(silhouette_mat);
+                        sil1.SetColor("g_vOutlineColor", color);
+                        sil1.SetColor("g_vMaskedOutlineColor", Color.Lerp(color, Color.black, 0.2f));
+                        mats = new Material[] { mats[0], sil1 };
+                        rend.sharedMaterials = mats;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < mats.Length; i++)
+                            mats[i].SetColor("_Color", ColorCombine(org_mats[i].GetColor("_Color"), color));
+                    }
                 }
             }
         }
