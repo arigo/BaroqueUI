@@ -334,7 +334,7 @@ namespace BaroqueUI
 
         static Camera controllerCamera;   /* See Dialog.ortho_camera for comments about this */
 
-        static internal Camera GetControllerCamera()
+        static Camera GetControllerCamera()
         {
             if (controllerCamera == null)   // includes 'has been destroyed'
             {
@@ -347,7 +347,7 @@ namespace BaroqueUI
             return controllerCamera;
         }
 
-        static internal PointerEventData MoveControllerCamera(Vector3 position, Vector3 forward)
+        static PointerEventData MoveControllerCamera(Vector3 position, Vector3 forward)
         {
             PointerEventData pevent = new PointerEventData(EventSystem.current);
             Camera camera = GetControllerCamera();

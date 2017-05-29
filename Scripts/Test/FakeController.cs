@@ -47,12 +47,13 @@ namespace BaroqueUI
         static void Setup()
         {
             Debug.Assert(Application.isEditor);
+            Debug.Assert(!Application.isPlaying);
             Application.logMessageReceived += HandleLog;
 
             CleanControllers();
             left_ctrl = Baroque.GetSteamVRManager().left.AddComponent<FakeController>();
             right_ctrl = Baroque.GetSteamVRManager().right.AddComponent<FakeController>();
-            Baroque.InitTests();
+            Baroque._InitTests();
         }
 
         static void CleanControllers()
@@ -199,7 +200,7 @@ namespace BaroqueUI
         void Check(MonoBehaviour hover, uint hover_lock, params string[] msgs)
         {
             SeeingStart();
-            UpdateAllControllers(GetControllers());
+            _UpdateAllControllers(GetControllers());
             Debug.Assert(hover == CurrentHoverTracker());
             Debug.Assert(hover_lock == tracker_hover_lock);
             Debug.Assert((active_touchpad_state == ActiveTouchpadState.None) == (active_touchpad == null));
@@ -249,7 +250,7 @@ namespace BaroqueUI
             Debug.Log("=================== TEST RUN ===================");
             ResetTracking();
 
-            UpdateAllControllers(GetControllers());
+            _UpdateAllControllers(GetControllers());
             Debug.Assert(left_ctrl.is_tracking_active);
             Debug.Assert(!left_ctrl.touchpadTouched);
             Debug.Assert(!left_ctrl.touchpadPressed);

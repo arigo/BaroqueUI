@@ -50,7 +50,7 @@ namespace BaroqueUI
 
         public Dialog MakePopup(Controller controller, GameObject requester = null)
         {
-            return ShouldShowPopup(this, requester) ? Instantiate<Dialog>(this).DoShowPopup(controller) : null;
+            return MakePopup(this, () => Instantiate<Dialog>(this), controller, requester);
         }
 
         public static Dialog MakePopup(string name_in_scene, Controller controller, GameObject requester = null)
@@ -60,6 +60,12 @@ namespace BaroqueUI
             return dlg.MakePopup(controller, requester);
         }
 
+        public delegate Dialog DialogBuilderDelegate();
+        static public Dialog MakePopup(object model, DialogBuilderDelegate builder, Controller controller, GameObject requester)
+        {
+            return ShouldShowPopup(model, requester) ? builder().DoShowPopup(controller) : null;
+        }
+
 
         /*****************************************************************************************/
 
@@ -67,12 +73,12 @@ namespace BaroqueUI
         static object popupRequester;
         static int popupCloseTriggerOutside;   /* bitmask, see Update() */
 
-        static internal bool ShouldShowPopup(object model, GameObject requester)
+        static bool ShouldShowPopup(object model, GameObject requester)
         {
             /* If 'requester' is not null, use that to identify the owner of the dialog box
              * and hide if called a second time.  If it is null, then use instead 'model'
              * (the dialog template or the Menu instance). */
-        object new_requester = (requester != null ? requester : model);
+            object new_requester = (requester != null ? requester : model);
             bool should_hide = false;
             if (popupShown != null && popupShown)
             {
@@ -87,7 +93,7 @@ namespace BaroqueUI
             return !should_hide;
         }
 
-        internal Dialog DoShowPopup(Controller controller)
+        Dialog DoShowPopup(Controller controller)
         {
             Vector3 head_forward = controller.position - Baroque.GetHeadTransform().position;
             Vector3 fw = controller.forward + head_forward.normalized;
@@ -204,7 +210,7 @@ namespace BaroqueUI
 
         BackgroundRenderer background_renderer;
 
-        internal const int UI_layer = 29;   /* and the next one */
+        const int UI_layer = 29;   /* and the next one */
 
         static void CreateLayer()
         {
@@ -540,7 +546,7 @@ namespace BaroqueUI
 
                 GameObject target = pevent.pointerPressRaycast.gameObject;
                 current_pressed = ExecuteEvents.ExecuteHierarchy(target, pevent, ExecuteEvents.pointerDownHandler);
-                
+
                 if (current_pressed != null)
                 {
                     ExecuteEvents.Execute(current_pressed, pevent, ExecuteEvents.beginDragHandler);
@@ -685,134 +691,134 @@ namespace BaroqueUI
             if (keyboardVrInput != null)
                 keyboardVrInput.KeyboardTyping(state, key);
         }
-    }
 
 
-    class DialogRenderer : MonoBehaviour
-    {
-        RenderTexture render_texture;
-        Camera ortho_camera;
-        Transform quad, back_quad;
-        float pixels_per_unit;
-
-        public void PrepareForRendering(float pixels_per_unit)
+        class DialogRenderer : MonoBehaviour
         {
-            RectTransform rtr = transform as RectTransform;
-            if (GetComponentInChildren<Collider>() == null)
-            {
-                Rect r = rtr.rect;
-                float zscale = transform.InverseTransformVector(transform.forward * 0.108f).magnitude;
+            RenderTexture render_texture;
+            Camera ortho_camera;
+            Transform quad, back_quad;
+            float pixels_per_unit;
 
-                BoxCollider coll = gameObject.AddComponent<BoxCollider>();
-                coll.isTrigger = true;
-                coll.size = new Vector3(r.width, r.height, zscale);
-                coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
+            public void PrepareForRendering(float pixels_per_unit)
+            {
+                RectTransform rtr = transform as RectTransform;
+                if (GetComponentInChildren<Collider>() == null)
+                {
+                    Rect r = rtr.rect;
+                    float zscale = transform.InverseTransformVector(transform.forward * 0.108f).magnitude;
+
+                    BoxCollider coll = gameObject.AddComponent<BoxCollider>();
+                    coll.isTrigger = true;
+                    coll.size = new Vector3(r.width, r.height, zscale);
+                    coll.center = new Vector3(r.center.x, r.center.y, zscale * -0.3125f);
+                }
+
+                this.pixels_per_unit = pixels_per_unit;
+                render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
+                                                   (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
+                /* This feels like a hack, but to get UI elements from a 3D position, we need a Camera
+                 * to issue a Raycast().  This "camera" is set up to "look" from the controller's point 
+                 * of view, usually orthogonally from the plane of the UI (but it could also be along
+                 * the controller's direction, if we go for ray-casting selection).  This is inspired 
+                 * from https://github.com/VREALITY/ViveUGUIModule.
+                 */
+                Transform tr1 = transform.Find("Ortho Camera");
+                if (tr1 != null)
+                    ortho_camera = tr1.GetComponent<Camera>();
+                else
+                    ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
+                ortho_camera.enabled = false;
+                ortho_camera.transform.SetParent(transform);
+                ortho_camera.transform.position = rtr.TransformPoint(
+                    rtr.rect.width * (0.5f - rtr.pivot.x),
+                    rtr.rect.height * (0.5f - rtr.pivot.y),
+                    0);
+                ortho_camera.transform.rotation = rtr.rotation;
+                ortho_camera.clearFlags = CameraClearFlags.SolidColor;
+                ortho_camera.backgroundColor = new Color(1, 1, 1);
+                ortho_camera.cullingMask = 2 << Dialog.UI_layer;
+                ortho_camera.orthographic = true;
+                ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height * 0.5f, 0).magnitude;
+                ortho_camera.nearClipPlane = -10;
+                ortho_camera.farClipPlane = 10;
+                ortho_camera.targetTexture = render_texture;
+
+                quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+                quad.SetParent(transform);
+                quad.position = ortho_camera.transform.position;
+                quad.rotation = ortho_camera.transform.rotation;
+                quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+                quad.gameObject.layer = 0;   /* default */
+                DestroyImmediate(quad.GetComponent<Collider>());
+
+                quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
+                quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
+
+                back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+                back_quad.SetParent(transform);
+                back_quad.position = ortho_camera.transform.position;
+                back_quad.rotation = ortho_camera.transform.rotation * Quaternion.LookRotation(new Vector3(0, 0, -1));
+                back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+                back_quad.gameObject.layer = 0;   /* default */
+                DestroyImmediate(back_quad.GetComponent<Collider>());
+
+                GetComponent<Canvas>().worldCamera = ortho_camera;
             }
 
-            this.pixels_per_unit = pixels_per_unit;
-            render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
-                                               (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
-            /* This feels like a hack, but to get UI elements from a 3D position, we need a Camera
-             * to issue a Raycast().  This "camera" is set up to "look" from the controller's point 
-             * of view, usually orthogonally from the plane of the UI (but it could also be along
-             * the controller's direction, if we go for ray-casting selection).  This is inspired 
-             * from https://github.com/VREALITY/ViveUGUIModule.
-             */
-            Transform tr1 = transform.Find("Ortho Camera");
-            if (tr1 != null)
-                ortho_camera = tr1.GetComponent<Camera>();
-            else
-                ortho_camera = new GameObject("Ortho Camera").AddComponent<Camera>();
-            ortho_camera.enabled = false;
-            ortho_camera.transform.SetParent(transform);
-            ortho_camera.transform.position = rtr.TransformPoint(
-                rtr.rect.width * (0.5f - rtr.pivot.x),
-                rtr.rect.height * (0.5f - rtr.pivot.y),
-                0);
-            ortho_camera.transform.rotation = rtr.rotation;
-            ortho_camera.clearFlags = CameraClearFlags.SolidColor;
-            ortho_camera.backgroundColor = new Color(1, 1, 1);
-            ortho_camera.cullingMask = 2 << Dialog.UI_layer;
-            ortho_camera.orthographic = true;
-            ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height * 0.5f, 0).magnitude;
-            ortho_camera.nearClipPlane = -10;
-            ortho_camera.farClipPlane = 10;
-            ortho_camera.targetTexture = render_texture;
-
-            quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-            quad.SetParent(transform);
-            quad.position = ortho_camera.transform.position;
-            quad.rotation = ortho_camera.transform.rotation;
-            quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-            quad.gameObject.layer = 0;   /* default */
-            DestroyImmediate(quad.GetComponent<Collider>());
-
-            quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
-            quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
-
-            back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-            back_quad.SetParent(transform);
-            back_quad.position = ortho_camera.transform.position;
-            back_quad.rotation = ortho_camera.transform.rotation * Quaternion.LookRotation(new Vector3(0, 0, -1));
-            back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-            back_quad.gameObject.layer = 0;   /* default */
-            DestroyImmediate(back_quad.GetComponent<Collider>());
-
-            GetComponent<Canvas>().worldCamera = ortho_camera;
-        }
-
-        private void OnDestroy()
-        {
-            render_texture.Release();
-        }
-
-        public void Render()
-        {
-            render_texture.DiscardContents();
-            ortho_camera.Render();
-        }
-
-        public void CustomRaycast(Vector3 world_position, List<RaycastResult> results)
-        {
-            Vector2 screen_point = ScreenPoint(world_position);
-            var canvas = GetComponent<Canvas>();
-            var graphicsForCanvas = GraphicRegistry.GetGraphicsForCanvas(canvas);
-            for (int i = 0; i < graphicsForCanvas.Count; i++)
+            private void OnDestroy()
             {
-                Graphic graphic = graphicsForCanvas[i];
-                if (graphic.canvasRenderer.cull)
-                    continue;
-                if (graphic.depth == -1)
-                    continue;
-                if (!graphic.raycastTarget)
-                    continue;
-                if (!RectTransformUtility.RectangleContainsScreenPoint(graphic.rectTransform, screen_point, ortho_camera))
-                    continue;
-                if (!graphic.Raycast(screen_point, ortho_camera))
-                    continue;
-
-                results.Add(new RaycastResult {
-                    gameObject = graphic.gameObject,
-                    module = GetComponent<GraphicRaycaster>(),
-                    index = results.Count,
-                    depth = graphic.depth,
-                    sortingLayer = canvas.sortingLayerID,
-                    sortingOrder = canvas.sortingOrder,
-                    screenPosition = screen_point,
-                });
+                render_texture.Release();
             }
-        }
 
-        public Vector2 ScreenPoint(Vector3 world_position)
-        {
-            RectTransform rtr = transform as RectTransform;
-            Vector2 local_pos = transform.InverseTransformPoint(world_position);   /* drop the 'z' coordinate */
-            local_pos.x += rtr.rect.width * rtr.pivot.x;
-            local_pos.y += rtr.rect.height * rtr.pivot.y;
-             /* Here, 'local_pos' is in coordinates that match the UI element coordinates.
-              * To convert it to the 'screenspace' coordinates of a camera, we need to apply
-              * a scaling factor of 'pixels_per_unit'. */
-            return local_pos * pixels_per_unit;
+            public void Render()
+            {
+                render_texture.DiscardContents();
+                ortho_camera.Render();
+            }
+
+            public void CustomRaycast(Vector3 world_position, List<RaycastResult> results)
+            {
+                Vector2 screen_point = ScreenPoint(world_position);
+                var canvas = GetComponent<Canvas>();
+                var graphicsForCanvas = GraphicRegistry.GetGraphicsForCanvas(canvas);
+                for (int i = 0; i < graphicsForCanvas.Count; i++)
+                {
+                    Graphic graphic = graphicsForCanvas[i];
+                    if (graphic.canvasRenderer.cull)
+                        continue;
+                    if (graphic.depth == -1)
+                        continue;
+                    if (!graphic.raycastTarget)
+                        continue;
+                    if (!RectTransformUtility.RectangleContainsScreenPoint(graphic.rectTransform, screen_point, ortho_camera))
+                        continue;
+                    if (!graphic.Raycast(screen_point, ortho_camera))
+                        continue;
+
+                    results.Add(new RaycastResult {
+                        gameObject = graphic.gameObject,
+                        module = GetComponent<GraphicRaycaster>(),
+                        index = results.Count,
+                        depth = graphic.depth,
+                        sortingLayer = canvas.sortingLayerID,
+                        sortingOrder = canvas.sortingOrder,
+                        screenPosition = screen_point,
+                    });
+                }
+            }
+
+            public Vector2 ScreenPoint(Vector3 world_position)
+            {
+                RectTransform rtr = transform as RectTransform;
+                Vector2 local_pos = transform.InverseTransformPoint(world_position);   /* drop the 'z' coordinate */
+                local_pos.x += rtr.rect.width * rtr.pivot.x;
+                local_pos.y += rtr.rect.height * rtr.pivot.y;
+                /* Here, 'local_pos' is in coordinates that match the UI element coordinates.
+                 * To convert it to the 'screenspace' coordinates of a camera, we need to apply
+                 * a scaling factor of 'pixels_per_unit'. */
+                return local_pos * pixels_per_unit;
+            }
         }
     }
 }
