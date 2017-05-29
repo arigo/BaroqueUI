@@ -15,6 +15,7 @@ Shader "BaroqueUI/Wireframe"
 		SubShader
 	{
 		Tags{ "RenderType" = "Opaque" }
+		Cull Off
 
 		Pass
 	{
