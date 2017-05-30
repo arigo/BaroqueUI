@@ -12,13 +12,14 @@ namespace BaroqueUI
         public Color dragColor = new Color(1, 0.4f, 0, 0.333f);
 
         [Tooltip("If checked, use a display outline instead of changing the material color.  "
-               + "Right now, only works for Renderers that have a single material to start with.")]
+               + "Assumes the object is displayed with MeshRenderers.")]
         public bool showOutline = true;
 
         Vector3 origin_position;
         Quaternion origin_rotation;
         Rigidbody original_nonkinematic;
-        Dictionary<Renderer, Material[]> original_materials;
+        Dictionary<Renderer, Material[]> original_materials;   /* only if showOutline is false */
+        Dictionary<MeshRenderer, MeshRenderer> extra_renderers;   /* only if showOutline is true */
 
         public virtual void Start()
         {
@@ -109,13 +110,59 @@ namespace BaroqueUI
                 if (original_materials != null)
                 {
                     foreach (var kv in original_materials)
-                    {
-                        if (kv.Value == null)   /* showOutline */
-                            kv.Key.sharedMaterials = new Material[] { kv.Key.sharedMaterial };
-                        else
-                            kv.Key.sharedMaterials = kv.Value;
-                    }
+                        kv.Key.sharedMaterials = kv.Value;
                     original_materials = null;
+                }
+                if (extra_renderers != null)
+                {
+                    foreach (var r in extra_renderers.Values)
+                        if (r != null)
+                            Destroy(r.gameObject);
+                    extra_renderers = null;
+                }
+            }
+            else if (showOutline)
+            {
+                if (extra_renderers == null)
+                    extra_renderers = new Dictionary<MeshRenderer, MeshRenderer>();
+
+                if (silhouette_mat == null)
+                    silhouette_mat = Resources.Load<Material>("BaroqueUI/Silhouette Material");
+                Material sil1 = Instantiate<Material>(silhouette_mat);
+                sil1.SetColor("g_vOutlineColor", color);
+                sil1.SetColor("g_vMaskedOutlineColor", Color.Lerp(color, Color.black, 0.2f));
+
+                foreach (var rend in GetComponentsInChildren<MeshRenderer>())
+                {
+                    MeshRenderer extra_rend;
+                    if (!extra_renderers.TryGetValue(rend, out extra_rend))
+                    {
+                        var org_mf = rend.GetComponent<MeshFilter>();
+                        if (org_mf == null)
+                            continue;
+
+                        GameObject go = new GameObject("Outline");
+                        var mf = go.AddComponent<MeshFilter>();
+                        mf.sharedMesh = org_mf.sharedMesh;
+                        extra_rend = go.AddComponent<MeshRenderer>();
+                        extra_rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                        extra_rend.receiveShadows = false;
+
+                        go.transform.SetParent(rend.transform);
+                        go.transform.localPosition = Vector3.zero;
+                        go.transform.localRotation = Quaternion.identity;
+                        go.transform.localScale = Vector3.one;
+
+                        extra_renderers[rend] = extra_rend;
+                        extra_renderers[extra_rend] = null;
+                    }
+                    if (extra_rend == null)
+                        continue;
+
+                    Material[] mat = new Material[rend.sharedMaterials.Length];
+                    for (int i = 0; i < mat.Length; i++)
+                        mat[i] = sil1;
+                    extra_rend.sharedMaterials = mat;
                 }
             }
             else
@@ -149,35 +196,16 @@ namespace BaroqueUI
                     else
                     {
                         org_mats = rend.sharedMaterials;
-                        if (showOutline && org_mats.Length == 1)
-                            org_mats = null;
-                        else
-                        {
-                            Material[] new_mats = new Material[org_mats.Length];
-                            for (int i = 0; i < new_mats.Length; i++)
-                                new_mats[i] = Instantiate<Material>(org_mats[i]);
-                            rend.sharedMaterials = new_mats;
-                        }
+                        Material[] new_mats = new Material[org_mats.Length];
+                        for (int i = 0; i < new_mats.Length; i++)
+                            new_mats[i] = Instantiate<Material>(org_mats[i]);
+                        rend.sharedMaterials = new_mats;
                         original_materials[rend] = org_mats;
                     }
 
                     Material[] mats = rend.sharedMaterials;
-                    if (org_mats == null)
-                    {
-                        /* showOutline */
-                        if (silhouette_mat == null)
-                            silhouette_mat = Resources.Load<Material>("BaroqueUI/Silhouette Material");
-                        Material sil1 = Instantiate<Material>(silhouette_mat);
-                        sil1.SetColor("g_vOutlineColor", color);
-                        sil1.SetColor("g_vMaskedOutlineColor", Color.Lerp(color, Color.black, 0.2f));
-                        mats = new Material[] { mats[0], sil1 };
-                        rend.sharedMaterials = mats;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < mats.Length; i++)
-                            mats[i].SetColor("_Color", ColorCombine(org_mats[i].GetColor("_Color"), color));
-                    }
+                    for (int i = 0; i < mats.Length; i++)
+                        mats[i].color = ColorCombine(org_mats[i].color, color);
                 }
             }
         }
