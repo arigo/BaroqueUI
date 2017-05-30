@@ -245,6 +245,24 @@ namespace BaroqueUI
             return Vector3.Distance(core, position);
         }
 
+        public static void ForceLeave()
+        {
+            foreach (var ctrl in GetControllers())
+                ctrl.ForceLeave(null);
+        }
+
+        public void ForceLeave(ControllerTracker single_tracker = null)
+        {
+            if (active_trigger != null && (single_tracker == null || single_tracker == active_trigger))
+                DeactivateTrigger();
+            if (active_grip != null && (single_tracker == null || single_tracker == active_grip))
+                DeactivateGrip();
+            if (active_touchpad != null && (single_tracker == null || single_tracker == active_touchpad))
+                DeactivateTouchpad();
+            if (tracker_hover != null && (single_tracker == null || single_tracker == tracker_hover))
+                LeaveNow();
+        }
+
 
         /***************************************************************************************/
 
