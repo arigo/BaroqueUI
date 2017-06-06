@@ -10,6 +10,39 @@ namespace BaroqueUI
     public delegate void ControllersUpdateEvent(Controller[] controllers);
     public delegate void ControllerVec2Event(Controller controller, Vector2 relative_pos);
 
+    public interface IControllerTracker
+    {
+        GetPriorityDelegate computePriority { get; set; }
+        void SetPriority(float value);
+        void SetPriorityFromDistance(float maximum);
+        bool isHover { get; }
+        bool isConcurrent { get; set; }
+        bool isActiveAndEnabled { get; }
+        event ControllersUpdateEvent onControllersUpdate;
+
+        event ControllerEvent onEnter;
+        event ControllerEvent onMoveOver;
+        event ControllerEvent onLeave;
+
+        event ControllerEvent onTriggerDown;
+        event ControllerEvent onTriggerDrag;
+        event ControllerEvent onTriggerUp;
+
+        event ControllerEvent onGripDown;
+        event ControllerEvent onGripDrag;
+        event ControllerEvent onGripUp;
+
+        event ControllerEvent onMenuClick;
+
+        event ControllerEvent onTouchPressDown;
+        event ControllerEvent onTouchPressDrag;
+        event ControllerEvent onTouchPressUp;
+        event ControllerVec2Event onTouchScroll;
+        event ControllerEvent onTouchDown;
+        event ControllerEvent onTouchDrag;
+        event ControllerEvent onTouchUp;
+    }
+
     enum EEventSet
     {
         Hover = 0x01,
@@ -22,7 +55,7 @@ namespace BaroqueUI
         IsConcurrent = 0x100,
     }
 
-    public class ControllerTracker
+    public class ControllerTracker: IControllerTracker
     {
         public readonly MonoBehaviour tracker;
 

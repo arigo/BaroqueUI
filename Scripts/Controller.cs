@@ -141,12 +141,12 @@ namespace BaroqueUI
             return locals[index];
         }
 
-        public static ControllerTracker HoverTracker(MonoBehaviour tracker)
+        public static IControllerTracker HoverTracker(MonoBehaviour tracker)
         {
             return GetOrBuildTracker(tracker, true);
         }
 
-        public static ControllerTracker GlobalTracker(MonoBehaviour tracker)
+        public static IControllerTracker GlobalTracker(MonoBehaviour tracker)
         {
             return GetOrBuildTracker(tracker, false);
         }
