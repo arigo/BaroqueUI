@@ -64,7 +64,7 @@ In a few steps:
 
 * In the ``Start()`` method:
 
-        var ct = Controller.Register(this);
+        var ct = Controller.HoverTracker(this);
         ct.onTriggerDown += OnTriggerDown;
 
 * This minimal example will make BaroqueUI call your ``OnTriggerDown``

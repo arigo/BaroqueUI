@@ -15,8 +15,9 @@
 <p>Preliminary but usable. APIs may change in the future, and more will be added, but always keeping in mind the ideas and goals outlined above.</p>
 <p>For Unity 5.5 and Unity 5.6 (other versions not tested but may work). Developed for HTC Vive.</p>
 <h2 id="contact">Contact</h2>
-<p>Main page and development version: https://github.com/arigo/BaroqueUI Contributions welcome!</p>
+<p>Main page and development version: https://github.com/arigo/BaroqueUI</p>
 <p>Main developer: Armin Rigo <a href="mailto:arigo@tunes.org">arigo@tunes.org</a>.</p>
+<p>Contributions welcome!</p>
 <h2 id="demo">Demo</h2>
 <p>This repo is meant to be checked out inside the <code>Assets/</code> directory of a Unity project. This project should have SteamVR installed too, e.g. from the Assets Store. (On Unity 5.6, BaroqueUI will patch SteamVR at runtime to work around an issue that prevents SteamVR's controllers from showing up.)</p>
 <p>A demo scene with multiple interaction places is present in the <code>Examples/Scenes/</code> folder.</p>
@@ -27,9 +28,9 @@
 <li><p>You drag and drop the <code>Teleport Enabler</code> prefab in the scene (from (<code>BaroqueUI/Prefabs</code>) if you want the default behavior of enabling teleporting to move around. This is optional.</p></li>
 <li><p>For each &quot;interactable&quot; object, you make sure it has got a collider and then attach a script to it.</p></li>
 <li><p>In the <code>Start()</code> method:</p>
-<pre><code>var ct = Controller.Register(this);
+<pre><code>var ct = Controller.HoverTracker(this);
 ct.onTriggerDown += OnTriggerDown;</code></pre></li>
-<li><p>This minimal example will make BaroqueUI call your <code>OnTriggerDown</code> method whenever the trigger button is pressed. You can use ctrl+tab in Visual Studio to insert the method automatically with the correct signature. See below for details.</p></li>
+<li><p>This minimal example will make BaroqueUI call your <code>OnTriggerDown</code> method whenever the trigger button is pressed. You can use &quot;tab&quot; or &quot;ctrl+dot&quot; in Visual Studio to insert the method automatically with the correct signature. See below for details.</p></li>
 <li><p>The BaroqueUI framework also provides classes to display a keyboard and interact with dialog-box-like displays.</p></li>
 </ul>
 <h2 id="baroque">Baroque</h2>
