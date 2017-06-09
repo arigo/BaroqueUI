@@ -69,39 +69,24 @@ namespace BaroqueUI
 
         public Transform SetPointer(string pointer_name)
         {
-            if (pointer_name == "")
-            {
-                if (pointer_object != null)
-                    Destroy(pointer_object);
-                pointer_object = null;
-                pointer_object_prefab = null;
-                pointer_str_name = null;
-                return null;
-            }
-            else
-            {
-                if (pointer_name != pointer_str_name)
-                {
-                    SetPointer(Resources.Load<GameObject>("Pointers/" + pointer_name));
-                    pointer_str_name = pointer_name;
-                }
-                return pointer_object.transform;
-            }
+            return SetPointer(pointer_name == "" ? null : Resources.Load<GameObject>("Pointers/" + pointer_name));
         }
 
         public Transform SetPointer(GameObject prefab)
         {
-            if (pointer_object_prefab != prefab)
-            {
-                if (pointer_object != null)
-                    Destroy(pointer_object);
-                pointer_str_name = null;
-                pointer_object_prefab = prefab;
-                pointer_object = Instantiate(prefab, transform);
-                pointer_object.transform.localPosition = POS_TO_CURSOR;
-                pointer_object.transform.localRotation = Quaternion.identity;
-            }
-            return pointer_object.transform;
+            pointer_object_prefab = prefab;
+            return UpdateCurrentPointer();
+        }
+
+        public Transform SetDefaultPointer(string pointer_name)
+        {
+            return SetDefaultPointer(pointer_name == "" ? null : Resources.Load<GameObject>("Pointers/" + pointer_name));
+        }
+
+        public Transform SetDefaultPointer(GameObject prefab)
+        {
+            pointer_object_default_prefab = prefab;
+            return UpdateCurrentPointer();
         }
 
         public void SetScrollWheel(bool visible)
@@ -315,8 +300,7 @@ namespace BaroqueUI
         Quaternion current_rotation;
         protected ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
         protected uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
-        GameObject pointer_object, pointer_object_prefab;
-        string pointer_str_name;
+        GameObject pointer_object, pointer_object_prefab, pointer_object_default_prefab;
         int controller_index;
 
         ControllerTracker tracker_hover_next;
@@ -1083,6 +1067,31 @@ namespace BaroqueUI
                 }
                 if (hint.tobj.text != hint.text)
                     hint.tobj.text = hint.text;
+            }
+        }
+
+        Transform UpdateCurrentPointer()
+        {
+            if (pointer_object != null)
+            {
+                Destroy(pointer_object);
+                pointer_object = null;
+            }
+
+            GameObject prefab = pointer_object_prefab;
+            if (prefab == null)
+                prefab = pointer_object_default_prefab;
+
+            if (prefab == null)
+            {
+                return null;
+            }
+            else
+            {
+                pointer_object = Instantiate(prefab, transform);
+                pointer_object.transform.localPosition = POS_TO_CURSOR;
+                pointer_object.transform.localRotation = Quaternion.identity;
+                return pointer_object.transform;
             }
         }
     }
