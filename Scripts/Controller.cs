@@ -69,24 +69,24 @@ namespace BaroqueUI
 
         public Transform SetPointer(string pointer_name)
         {
-            return SetPointer(pointer_name == "" ? null : Resources.Load<GameObject>("Pointers/" + pointer_name));
+            if (pointer_name == "")
+            {
+                if (pointer_object_prefab != null)
+                    UpdateCurrentPointer(null, null);
+            }
+            else
+            {
+                if (pointer_object_name != pointer_name)
+                    UpdateCurrentPointer(Resources.Load<GameObject>("Pointers/" + pointer_name), pointer_name);
+            }
+            return pointer_transform;
         }
 
         public Transform SetPointer(GameObject prefab)
         {
-            pointer_object_prefab = prefab;
-            return UpdateCurrentPointer();
-        }
-
-        public Transform SetDefaultPointer(string pointer_name)
-        {
-            return SetDefaultPointer(pointer_name == "" ? null : Resources.Load<GameObject>("Pointers/" + pointer_name));
-        }
-
-        public Transform SetDefaultPointer(GameObject prefab)
-        {
-            pointer_object_default_prefab = prefab;
-            return UpdateCurrentPointer();
+            if (pointer_object_prefab != prefab)
+                UpdateCurrentPointer(prefab, null);
+            return pointer_transform;
         }
 
         public void SetScrollWheel(bool visible)
@@ -131,7 +131,7 @@ namespace BaroqueUI
             return GetOrBuildTracker(tracker, true);
         }
 
-        public static IControllerTracker GlobalTracker(MonoBehaviour tracker)
+        public static IGlobalControllerTracker GlobalTracker(MonoBehaviour tracker)
         {
             return GetOrBuildTracker(tracker, false);
         }
@@ -300,7 +300,9 @@ namespace BaroqueUI
         Quaternion current_rotation;
         protected ControllerTracker tracker_hover, active_trigger, active_grip, active_touchpad;
         protected uint tracker_hover_lock;   /* bitmask: MANUAL_LOCK, 1<<Trigger, 1<<Grip, 1<<Touchpad */
-        GameObject pointer_object, pointer_object_prefab, pointer_object_default_prefab;
+        Transform pointer_transform;
+        GameObject pointer_object_prefab;
+        string pointer_object_name;
         int controller_index;
 
         ControllerTracker tracker_hover_next;
@@ -1070,28 +1072,22 @@ namespace BaroqueUI
             }
         }
 
-        Transform UpdateCurrentPointer()
+        void UpdateCurrentPointer(GameObject prefab, string name)
         {
-            if (pointer_object != null)
+            if (pointer_transform != null)
             {
-                Destroy(pointer_object);
-                pointer_object = null;
+                Destroy(pointer_transform.gameObject);
+                pointer_transform = null;
             }
 
-            GameObject prefab = pointer_object_prefab;
-            if (prefab == null)
-                prefab = pointer_object_default_prefab;
+            pointer_object_prefab = prefab;
+            pointer_object_name = name;
 
-            if (prefab == null)
+            if (pointer_object_prefab != null)
             {
-                return null;
-            }
-            else
-            {
-                pointer_object = Instantiate(prefab, transform);
-                pointer_object.transform.localPosition = POS_TO_CURSOR;
-                pointer_object.transform.localRotation = Quaternion.identity;
-                return pointer_object.transform;
+                pointer_transform = Instantiate(pointer_object_prefab, transform).transform;
+                pointer_transform.localPosition = POS_TO_CURSOR;
+                pointer_transform.localRotation = Quaternion.identity;
             }
         }
     }

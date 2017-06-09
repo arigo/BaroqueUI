@@ -10,7 +10,7 @@ namespace BaroqueUI
     public delegate void ControllersUpdateEvent(Controller[] controllers);
     public delegate void ControllerVec2Event(Controller controller, Vector2 relative_pos);
 
-    public interface IControllerTracker
+    public interface IGlobalControllerTracker
     {
         GetPriorityDelegate computePriority { get; set; }
         void SetPriority(float value);
@@ -19,10 +19,6 @@ namespace BaroqueUI
         bool isConcurrent { get; set; }
         bool isActiveAndEnabled { get; }
         event ControllersUpdateEvent onControllersUpdate;
-
-        event ControllerEvent onEnter;
-        event ControllerEvent onMoveOver;
-        event ControllerEvent onLeave;
 
         event ControllerEvent onTriggerDown;
         event ControllerEvent onTriggerDrag;
@@ -41,6 +37,13 @@ namespace BaroqueUI
         event ControllerEvent onTouchDown;
         event ControllerEvent onTouchDrag;
         event ControllerEvent onTouchUp;
+    }
+
+    public interface IControllerTracker: IGlobalControllerTracker
+    {
+        event ControllerEvent onEnter;
+        event ControllerEvent onMoveOver;
+        event ControllerEvent onLeave;
     }
 
     enum EEventSet
