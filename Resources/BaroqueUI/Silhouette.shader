@@ -161,6 +161,7 @@ Shader "BaroqueUI/FromValve/Silhouette"
 			Tags{ "LightMode" = "Always" }
 			Cull Off
 			ZTest Greater
+			Offset -1, -1
 			ZWrite Off
 			Stencil
 			{
@@ -180,6 +181,7 @@ Shader "BaroqueUI/FromValve/Silhouette"
 			Tags { "LightMode" = "Always" }
 			Cull Off
 			ZTest LEqual
+			Offset -1, -1
 			ZWrite On
 			Stencil
 			{
