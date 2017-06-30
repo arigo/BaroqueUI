@@ -131,9 +131,15 @@ namespace BaroqueUI
             if (!controllersReady)
             {
 #if UNITY_5_6
-                /* hack hack hack for SteamVR */
-                if (GetHeadTransform().GetComponent<SteamVR_UpdatePoses>() == null)
-                    GetHeadTransform().gameObject.AddComponent<SteamVR_UpdatePoses>();
+                /* hack hack hack for SteamVR < 1.2.2 on Unity 5.6 */
+                if (typeof(SteamVR_UpdatePoses).GetMethod("OnPreCull",
+                    System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic) != null)
+                {
+                    if (GetHeadTransform().GetComponent<SteamVR_UpdatePoses>() == null)
+                        GetHeadTransform().gameObject.AddComponent<SteamVR_UpdatePoses>();
+                }
 #endif
                 Controller._InitControllers();
                 controllers = new Controller[2];
