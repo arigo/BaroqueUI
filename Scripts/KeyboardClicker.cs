@@ -66,6 +66,7 @@ namespace BaroqueUI
         const int VK_CONTROL = 0x11;
         const int VK_MENU = 0x12;
 
+        const int SCAN_UNKNOWN = -1;
         const int SCAN_ESC = 1;
         const int SCAN_BACKSPACE = 14;
         const int SCAN_TAB = 15;
@@ -172,10 +173,10 @@ namespace BaroqueUI
             {
                 string name = btn.gameObject.name;
                 int scancode;
+                string text0, text1, text2;
+
                 if (name.StartsWith("S") && Int32.TryParse(name.Substring(1), out scancode))
                 {
-                    string text0, text1, text2;
-
                     if (scancode == SCAN_BACKSPACE || scancode == SCAN_TAB || scancode == SCAN_ENTER ||
                         scancode == SCAN_ALTGR || scancode == SCAN_ESC)
                     {
@@ -216,17 +217,27 @@ namespace BaroqueUI
                         use_ctrl_alt |= (text2 != "");
                         all_regular_scancodes.Add(scancode, new string[] { text0, text1 });
                     }
-                    var info = new KeyInfo();
-                    info.scan_code = scancode;
-                    info.current_text = text0;
-                    info.texts = new string[] { text0, text1, text2 };
-                    info.image = btn.GetComponent<Image>();
-                    info.text = btn.GetComponentInChildren<Text>();
-                    info.Update();
-                    key_infos[btn] = info;
                 }
+                else if (name.StartsWith("K-") && name.Length == 4)
+                {
+                    scancode = SCAN_UNKNOWN;
+                    text0 = name[2].ToString();
+                    text1 = name[3].ToString();
+                    text2 = "";
+                }
+                else
+                    continue;
+
+                var info = new KeyInfo();
+                info.scan_code = scancode;
+                info.current_text = text0;
+                info.texts = new string[] { text0, text1, text2 };
+                info.image = btn.GetComponent<Image>();
+                info.text = btn.GetComponentInChildren<Text>();
+                info.Update();
+                key_infos[btn] = info;
             }
-            if (!use_ctrl_alt)
+            if (!use_ctrl_alt && key_altgr != null)
             {
                 key_infos.Remove(key_altgr);
                 Destroy(key_altgr.gameObject);
