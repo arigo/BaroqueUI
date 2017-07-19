@@ -23,6 +23,9 @@ namespace BaroqueUI
         [Tooltip("Can the user scroll the whole dialog with the scroll wheel?")]
         public bool scrollWholeDialog = false;
 
+        [Tooltip("Can the user activate dialog elements just by touching the touchpad?")]
+        public bool touchpadTouchAct = true;
+
         [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
@@ -314,9 +317,13 @@ namespace BaroqueUI
             ct.onTriggerDown += MouseDown;
             ct.onTriggerDrag += MouseMove;
             ct.onTriggerUp += MouseUp;
-            ct.onTouchDown += MouseDown;
-            ct.onTouchDrag += MouseMove;
-            ct.onTouchUp += MouseUp;
+
+            ct.onTouchDown += MouseTouchDown;
+            ct.onTouchDrag += MouseTouchMove;
+            ct.onTouchUp += MouseTouchUp;
+            ct.onTouchPressDown += MousePressDown;
+            ct.onTouchPressDrag += MousePressMove;
+            ct.onTouchPressUp += MousePressUp;
             ct.onTouchScroll += OnTouchScroll;
 
             UpdateRenderingOnce();
@@ -580,6 +587,42 @@ namespace BaroqueUI
                 ExecuteEvents.Execute(current_pressed, pevent, ExecuteEvents.pointerClickHandler);
 
             current_pressed = null;
+        }
+
+        void MouseTouchDown(Controller controller)
+        {
+            if (touchpadTouchAct)
+                MouseDown(controller);
+        }
+
+        void MouseTouchMove(Controller controller)
+        {
+            if (touchpadTouchAct)
+                MouseMove(controller);
+        }
+
+        void MouseTouchUp(Controller controller)
+        {
+            if (touchpadTouchAct)
+                MouseUp(controller);
+        }
+
+        void MousePressDown(Controller controller)
+        {
+            if (!touchpadTouchAct)
+                MouseDown(controller);
+        }
+
+        void MousePressMove(Controller controller)
+        {
+            if (!touchpadTouchAct)
+                MouseMove(controller);
+        }
+
+        void MousePressUp(Controller controller)
+        {
+            if (!touchpadTouchAct)
+                MouseUp(controller);
         }
 
         float GetPriority(Controller controller)
