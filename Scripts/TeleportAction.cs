@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 using Valve.VR;
 
 
@@ -18,6 +19,7 @@ namespace BaroqueUI
         public Color validArcColor, invalidArcColor;
         public Material teleportMaterial;
         public Transform invalidReticlePrefab, destinationReticlePrefab;
+        public UnityEvent onTeleported;
 
         Valve.VR.InteractionSystem.TeleportArc arc;
         Transform invalid_reticle, destination_reticle;
@@ -145,6 +147,8 @@ namespace BaroqueUI
             v.y = destination_position.y;
             camera_rig.position = v;
             FadeToColor(Color.clear, 0.2f);
+            if (onTeleported != null)
+                onTeleported.Invoke();
         }
     }
 }
