@@ -29,6 +29,19 @@ namespace BaroqueUI
         [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
+        [Tooltip("Tweak the materials: set to a length 2 array with the front and back material, or a length 1 array if you want no back")]
+        public Material[] materials;
+
+        public void Reset()
+        {
+            alreadyPositioned = false;
+            automaticKeyboard = true;
+            scrollWholeDialog = false;
+            touchpadTouchAct = true;
+            unitsPerMeter = 400;
+            materials = DefaultMaterials();
+        }
+
 
         public void Set<T>(string widget_name, T value, UnityAction<T> onChange = null)
         {
@@ -282,12 +295,26 @@ namespace BaroqueUI
                 {
                     rend = canvas.gameObject.AddComponent<DialogRenderer>();
                     float pixels_per_unit = GetComponent<CanvasScaler>().dynamicPixelsPerUnit;
-                    rend.PrepareForRendering(pixels_per_unit);
+                    Material[] mat = materials;
+                    if (mat == null || mat.Length == 0)
+                        mat = DefaultMaterials();
+                    if (mat[0] == null)
+                        mat[0] = DefaultMaterials()[0];
+                    rend.PrepareForRendering(pixels_per_unit, mat);
                 }
                 rend.Render();
             }
 
             RecSetLayer(UI_layer);   /* this layer is not visible any more */
+        }
+
+        Material[] DefaultMaterials()
+        {
+            return new Material[]
+            {
+                Resources.Load<Material>("BaroqueUI/Dialog Material"),
+                Resources.Load<Material>("BaroqueUI/Dialog Material Back")
+            };
         }
 
         void Start()
@@ -332,7 +359,12 @@ namespace BaroqueUI
         private void OnEnable()
         {
             if (background_renderer == null)
+            {
                 background_renderer = new BackgroundRenderer(UpdateRenderingOnce);
+
+                var gt = Controller.GlobalTracker(this);
+                gt.onControllersUpdate += Gt_onControllersUpdate;
+            }
         }
 
         private void OnDisable()
@@ -341,10 +373,13 @@ namespace BaroqueUI
             {
                 background_renderer.Stop();
                 background_renderer = null;
+
+                var gt = Controller.GlobalTracker(this);
+                gt.onControllersUpdate -= Gt_onControllersUpdate;
             }
         }
 
-        private void LateUpdate()
+        private void Gt_onControllersUpdate(Controller[] controllers)
         {
             BackgroundRenderer.LateUpdate();
         }
@@ -743,7 +778,7 @@ namespace BaroqueUI
             Transform quad, back_quad;
             float pixels_per_unit;
 
-            public void PrepareForRendering(float pixels_per_unit)
+            public void PrepareForRendering(float pixels_per_unit, Material[] materials)
             {
                 RectTransform rtr = transform as RectTransform;
                 if (GetComponentInChildren<Collider>() == null)
@@ -795,16 +830,21 @@ namespace BaroqueUI
                 quad.gameObject.layer = 0;   /* default */
                 DestroyImmediate(quad.GetComponent<Collider>());
 
-                quad.GetComponent<MeshRenderer>().material = Resources.Load<Material>("BaroqueUI/Dialog Material");
+                quad.GetComponent<MeshRenderer>().material = materials[0];
                 quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
 
-                back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-                back_quad.SetParent(transform);
-                back_quad.position = ortho_camera.transform.position;
-                back_quad.rotation = ortho_camera.transform.rotation * Quaternion.LookRotation(new Vector3(0, 0, -1));
-                back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-                back_quad.gameObject.layer = 0;   /* default */
-                DestroyImmediate(back_quad.GetComponent<Collider>());
+                if (materials.Length >= 2 && materials[1] != null)
+                {
+                    back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+                    back_quad.SetParent(transform);
+                    back_quad.position = ortho_camera.transform.position;
+                    back_quad.rotation = ortho_camera.transform.rotation * Quaternion.LookRotation(new Vector3(0, 0, -1));
+                    back_quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+                    back_quad.gameObject.layer = 0;   /* default */
+                    DestroyImmediate(back_quad.GetComponent<Collider>());
+
+                    back_quad.GetComponent<MeshRenderer>().material = materials[1];
+                }
 
                 GetComponent<Canvas>().worldCamera = ortho_camera;
             }
