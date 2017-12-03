@@ -664,16 +664,19 @@ namespace BaroqueUI
                         touch_original_pos2 = p;
                         active_touchpad._Call(active_touchpad._i_onTouchScroll, this, d);
 
-                        /* in the Action2 mode, active_touchpad_timeout is abused to decrease not
-                         * based on time but based on distance */
-                        active_touchpad_timeout -= d.magnitude;
-                        if (active_touchpad_timeout < 0)
+                        if (active_touchpad.isHapticScrollEnabled)
                         {
-                            const int TOUCHPAD_HAPTIC_STRENGTH = 200;
-                            const float TOUCHPAD_HAPTIC_DISTANCE = 0.1f;
+                            /* in the Action2 mode, active_touchpad_timeout is abused to decrease not
+                             * based on time but based on distance */
+                            active_touchpad_timeout -= d.magnitude;
+                            if (active_touchpad_timeout < 0)
+                            {
+                                const int TOUCHPAD_HAPTIC_STRENGTH = 200;
+                                const float TOUCHPAD_HAPTIC_DISTANCE = 0.1f;
 
-                            HapticPulse(TOUCHPAD_HAPTIC_STRENGTH);
-                            active_touchpad_timeout = TOUCHPAD_HAPTIC_DISTANCE;
+                                HapticPulse(TOUCHPAD_HAPTIC_STRENGTH);
+                                active_touchpad_timeout = TOUCHPAD_HAPTIC_DISTANCE;
+                            }
                         }
                         break;
 

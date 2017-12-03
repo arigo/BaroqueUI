@@ -18,6 +18,7 @@ namespace BaroqueUI
         bool isHover { get; }
         bool isConcurrent { get; set; }
         bool isActiveAndEnabled { get; }
+        bool isHapticScrollEnabled { get; set; }
         event ControllersUpdateEvent onControllersUpdate;
 
         event ControllerEvent onTriggerDown;
@@ -56,6 +57,7 @@ namespace BaroqueUI
         TouchpadAction2 = 0x40,  /* OnTouchScroll         */
         TouchpadAction3 = 0x80,  /* OnTouchDown, ...      */
         IsConcurrent = 0x100,
+        TouchScrollSilent = 0x200,
     }
 
     public class ControllerTracker: IControllerTracker
@@ -105,6 +107,10 @@ namespace BaroqueUI
         }
         public bool isActiveAndEnabled {
             get { return tracker && tracker.isActiveAndEnabled; }
+        }
+        public bool isHapticScrollEnabled {
+            get { return (event_sets & EEventSet.TouchScrollSilent) == 0; }
+            set { if (!value) event_sets |= EEventSet.TouchScrollSilent; else event_sets &= ~EEventSet.TouchScrollSilent; }
         }
 
         internal ControllersUpdateEvent _i_onControllersUpdate;
