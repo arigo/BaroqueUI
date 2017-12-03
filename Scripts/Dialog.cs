@@ -35,6 +35,9 @@ namespace BaroqueUI
         [Tooltip("Background color.  You can use a partially or totally transparent color if you change the front material, e.g. to shader 'Standard' mode 'Transparent'.")]
         public Color backgroundColor = Color.white;
 
+        [Tooltip("A custom RenderTexture.  If specified, this Dialog doesn't show anything but only renders here.  You can then use it as a regular texture somewhere else.  Should have the same width/height as set in the Rect Transform, multiplied by 'Dynamic Pixels Per Unit' if it is not 1.")]
+        public RenderTexture renderTexture;
+
         public void Reset()
         {
             alreadyPositioned = false;
@@ -44,6 +47,7 @@ namespace BaroqueUI
             unitsPerMeter = 400;
             materials = DefaultMaterials();
             backgroundColor = Color.white;
+            renderTexture = null;
         }
 
 
@@ -304,8 +308,9 @@ namespace BaroqueUI
                         mat = DefaultMaterials();
                     if (mat[0] == null)
                         mat[0] = DefaultMaterials()[0];
-                    rend.PrepareForRendering(pixels_per_unit, mat, backgroundColor);
+                    rend.PrepareForRendering(pixels_per_unit, mat, renderTexture);
                 }
+                rend.SetBackgroundColor(backgroundColor);
                 rend.Render();
             }
 
@@ -778,11 +783,12 @@ namespace BaroqueUI
         class DialogRenderer : MonoBehaviour
         {
             RenderTexture render_texture;
+            bool own_render_texture;
             Camera ortho_camera;
             Transform quad, back_quad;
             float pixels_per_unit;
 
-            public void PrepareForRendering(float pixels_per_unit, Material[] materials, Color backgroundColor)
+            public void PrepareForRendering(float pixels_per_unit, Material[] materials, RenderTexture renderTexture)
             {
                 RectTransform rtr = transform as RectTransform;
                 if (GetComponentInChildren<Collider>() == null)
@@ -797,8 +803,12 @@ namespace BaroqueUI
                 }
 
                 this.pixels_per_unit = pixels_per_unit;
-                render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
-                                                   (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
+                own_render_texture = (renderTexture == null);
+                if (own_render_texture)
+                    render_texture = new RenderTexture((int)(rtr.rect.width * pixels_per_unit + 0.5),
+                                                       (int)(rtr.rect.height * pixels_per_unit + 0.5), 32);
+                else
+                    render_texture = renderTexture;
                 /* This feels like a hack, but to get UI elements from a 3D position, we need a Camera
                  * to issue a Raycast().  This "camera" is set up to "look" from the controller's point 
                  * of view, usually orthogonally from the plane of the UI (but it could also be along
@@ -818,7 +828,6 @@ namespace BaroqueUI
                     0);
                 ortho_camera.transform.rotation = rtr.rotation;
                 ortho_camera.clearFlags = CameraClearFlags.SolidColor;
-                ortho_camera.backgroundColor = backgroundColor;
                 ortho_camera.cullingMask = 2 << Dialog.UI_layer;
                 ortho_camera.orthographic = true;
                 ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height * 0.5f, 0).magnitude;
@@ -826,18 +835,20 @@ namespace BaroqueUI
                 ortho_camera.farClipPlane = 10;
                 ortho_camera.targetTexture = render_texture;
 
-                quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
-                quad.SetParent(transform);
-                quad.position = ortho_camera.transform.position;
-                quad.rotation = ortho_camera.transform.rotation;
-                quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
-                quad.gameObject.layer = 0;   /* default */
-                DestroyImmediate(quad.GetComponent<Collider>());
+                if (own_render_texture)
+                {
+                    quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
+                    quad.SetParent(transform);
+                    quad.position = ortho_camera.transform.position;
+                    quad.rotation = ortho_camera.transform.rotation;
+                    quad.localScale = new Vector3(rtr.rect.width, rtr.rect.height, 1);
+                    quad.gameObject.layer = 0;   /* default */
+                    DestroyImmediate(quad.GetComponent<Collider>());
 
-                quad.GetComponent<MeshRenderer>().material = materials[0];
-                quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
-
-                if (materials.Length >= 2 && materials[1] != null)
+                    quad.GetComponent<MeshRenderer>().material = materials[0];
+                    quad.GetComponent<MeshRenderer>().material.SetTexture("_MainTex", render_texture);
+                }
+                if (own_render_texture && materials.Length >= 2 && materials[1] != null)
                 {
                     back_quad = GameObject.CreatePrimitive(PrimitiveType.Quad).transform;
                     back_quad.SetParent(transform);
@@ -853,9 +864,15 @@ namespace BaroqueUI
                 GetComponent<Canvas>().worldCamera = ortho_camera;
             }
 
+            internal void SetBackgroundColor(Color backgroundColor)
+            {
+                ortho_camera.backgroundColor = backgroundColor;
+            }
+
             private void OnDestroy()
             {
-                render_texture.Release();
+                if (own_render_texture)
+                    render_texture.Release();
             }
 
             public void Render()
