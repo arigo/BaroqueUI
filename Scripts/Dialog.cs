@@ -29,8 +29,11 @@ namespace BaroqueUI
         [Tooltip("For pop-ups, the scale of the dialog box is corrected to this number of units per world space 'meter'.")]
         public float unitsPerMeter = 400;
 
-        [Tooltip("Tweak the materials: set to a length 2 array with the front and back material, or a length 1 array if you want no back")]
+        [Tooltip("Tweak the materials: set to a length 2 array with the front and back material, or a length 1 array if you want no back.  The front material must support a texture.")]
         public Material[] materials;
+
+        [Tooltip("Background color.  You can use a partially or totally transparent color if you change the front material, e.g. to shader 'Standard' mode 'Transparent'.")]
+        public Color backgroundColor = Color.white;
 
         public void Reset()
         {
@@ -40,6 +43,7 @@ namespace BaroqueUI
             touchpadTouchAct = true;
             unitsPerMeter = 400;
             materials = DefaultMaterials();
+            backgroundColor = Color.white;
         }
 
 
@@ -300,7 +304,7 @@ namespace BaroqueUI
                         mat = DefaultMaterials();
                     if (mat[0] == null)
                         mat[0] = DefaultMaterials()[0];
-                    rend.PrepareForRendering(pixels_per_unit, mat);
+                    rend.PrepareForRendering(pixels_per_unit, mat, backgroundColor);
                 }
                 rend.Render();
             }
@@ -778,7 +782,7 @@ namespace BaroqueUI
             Transform quad, back_quad;
             float pixels_per_unit;
 
-            public void PrepareForRendering(float pixels_per_unit, Material[] materials)
+            public void PrepareForRendering(float pixels_per_unit, Material[] materials, Color backgroundColor)
             {
                 RectTransform rtr = transform as RectTransform;
                 if (GetComponentInChildren<Collider>() == null)
@@ -814,7 +818,7 @@ namespace BaroqueUI
                     0);
                 ortho_camera.transform.rotation = rtr.rotation;
                 ortho_camera.clearFlags = CameraClearFlags.SolidColor;
-                ortho_camera.backgroundColor = new Color(1, 1, 1);
+                ortho_camera.backgroundColor = backgroundColor;
                 ortho_camera.cullingMask = 2 << Dialog.UI_layer;
                 ortho_camera.orthographic = true;
                 ortho_camera.orthographicSize = rtr.TransformVector(0, rtr.rect.height * 0.5f, 0).magnitude;
