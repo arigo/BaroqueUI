@@ -345,23 +345,25 @@ namespace BaroqueUI
 
             StartAutomaticKeyboard();
 
-            var ct = Controller.HoverTracker(this);
-            ct.computePriority = GetPriority;
-            ct.onEnter += OnEnter;
-            ct.onMoveOver += MouseMove;
-            ct.onLeave += OnLeave;
-            ct.onTriggerDown += MouseDown;
-            ct.onTriggerDrag += MouseMove;
-            ct.onTriggerUp += MouseUp;
+            if (renderTexture == null)   /* else, no automatic controllers */
+            {
+                var ct = Controller.HoverTracker(this);
+                ct.computePriority = GetPriority;
+                ct.onEnter += OnEnter;
+                ct.onMoveOver += MouseMove;
+                ct.onLeave += OnLeave;
+                ct.onTriggerDown += MouseDown;
+                ct.onTriggerDrag += MouseMove;
+                ct.onTriggerUp += MouseUp;
 
-            ct.onTouchDown += MouseTouchDown;
-            ct.onTouchDrag += MouseTouchMove;
-            ct.onTouchUp += MouseTouchUp;
-            ct.onTouchPressDown += MousePressDown;
-            ct.onTouchPressDrag += MousePressMove;
-            ct.onTouchPressUp += MousePressUp;
-            ct.onTouchScroll += OnTouchScroll;
-
+                ct.onTouchDown += MouseTouchDown;
+                ct.onTouchDrag += MouseTouchMove;
+                ct.onTouchUp += MouseTouchUp;
+                ct.onTouchPressDown += MousePressDown;
+                ct.onTouchPressDrag += MousePressMove;
+                ct.onTouchPressUp += MousePressUp;
+                ct.onTouchScroll += OnTouchScroll;
+            }
             UpdateRenderingOnce();
         }
 
