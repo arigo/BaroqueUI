@@ -389,11 +389,23 @@ namespace BaroqueUI
                 /* read the button state */
                 uint prev_bitmask_buttons = bitmask_buttons;
 
+                bool trigclick = (controllerState.rAxis1.x > 0.999f);   /* == 1.0: the controller fully 'clicked' */
                 ulong trigger = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Trigger));
                 ulong pad = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong padtouch = controllerState.ulButtonTouched & (1UL << ((int)EVRButtonId.k_EButton_SteamVR_Touchpad));
                 ulong grip = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_Grip));
                 ulong menu = controllerState.ulButtonPressed & (1UL << ((int)EVRButtonId.k_EButton_ApplicationMenu));
+
+                /* the bit at 0x400000U means that the trigger was fully clicked during the
+                 * previous frame.  If the bit is set but we are not fully clicking any more,
+                 * then we consider the trigger to be already released even if trigger != 0
+                 * right now (i.e. the trigger is still pressed a lot, just not fully any more).
+                 */
+                if ((bitmask_buttons & 0x400000U) != 0 && !trigclick && trigger != 0)
+                {
+                    trigclick = true;   /* keep the 0x400000U bit as long as we get trigger != 0 */
+                    trigger = 0;
+                }
 
                 uint b = 0;
                 if (menu != 0) b |= (1U << (int)EControllerButton.Menu);
@@ -401,6 +413,7 @@ namespace BaroqueUI
                 if (pad != 0) b |= (1U << (int)EControllerButton.Touchpad);
                 if (trigger != 0) b |= (1U << (int)EControllerButton.Trigger);
                 if (padtouch != 0) b |= (1U << (int)EControllerButton.TouchpadTouched);
+                if (trigclick) b |= 0x400000U;
                 bitmask_buttons = b;
                 bitmask_buttons_down = bitmask_buttons & ~prev_bitmask_buttons;
 
